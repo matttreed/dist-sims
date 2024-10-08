@@ -1,0 +1,4 @@
+torch
+torchvision
+torchtext
+portalocker>=2.0.0
