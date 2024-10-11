@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 from examples.models import SmallGenerativeTransformer
 from wash import simulate_wash
+from torch.utils.data import Subset
 
 
 import torch
@@ -76,6 +77,10 @@ if __name__ == "__main__":
     train_dataset = NextTokenDataset(train_iter, tokenizer, vocab, max_len=512)
     test_dataset = NextTokenDataset(test_iter, tokenizer, vocab, max_len=512)
 
+    train_subset = Subset(train_dataset, indices=range(16 * 1500))
+    # test_subset = Subset(test_dataset, indices=range(16 * 100))
+    test_subset = test_dataset
+
     simulate_wash(
         model_cls=SmallGenerativeTransformer,
         model_kwargs={
@@ -87,8 +92,8 @@ if __name__ == "__main__":
         optimizer_cls=torch.optim.AdamW,
         optimizer_kwargs={"lr": 0.01},
         dataloader_kwargs={"collate_fn": collate_fn},
-        train_dataset=train_dataset,
-        eval_dataset=test_dataset,
+        train_dataset=train_subset,
+        eval_dataset=test_subset,
         loss_fn=CELoss,
         num_workers=2,
         num_epochs=1,
@@ -96,4 +101,5 @@ if __name__ == "__main__":
         p_shuffle=0.01,
         batch_size=16,
         split_dataset=True,
+        save_path="outputs/transformer.pth",
     )

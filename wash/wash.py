@@ -38,7 +38,7 @@ def simulate_wash(
 
     if split_dataset:
         dataset_length = dataset_length // num_workers
-        lengths = [dataset_length] * num_workers
+        lengths = [dataset_length] * num_workers  # TODO handle uneven splits
         datasets = torch.utils.data.random_split(train_dataset, lengths)
     else:
         datasets = [train_dataset for _ in range(num_workers)]
@@ -62,6 +62,7 @@ def simulate_wash(
             master_pipes,
             model_cls,
             model_kwargs,
+            dataloader_kwargs,
             loss_fn,
             eval_dataset,
             dataset_length,
@@ -132,4 +133,6 @@ def simulate_wash(
                 p.terminate()
         for p in processes:
             p.join()
+
+        del cpu_times
         print("All processes cleaned up.")

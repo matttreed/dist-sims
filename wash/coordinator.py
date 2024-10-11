@@ -18,22 +18,24 @@ def generate_random_indices(model, fraction=0.05):
     return indices_dict
 
 
-def eval_model(model, eval_dataset, loss_fn, batch_size):
-    dataloader = torch.utils.data.DataLoader(eval_dataset, batch_size=batch_size)
+def eval_model(model, eval_dataset, loss_fn, batch_size, dataloader_kwargs):
+    dataloader = torch.utils.data.DataLoader(
+        eval_dataset, batch_size=batch_size, **dataloader_kwargs
+    )
     model.eval()
 
     correct = 0
-    cum_loss = 0
+    cum_losses = []
     with torch.no_grad():
         for data, target in dataloader:
             output = model(data)
             loss = loss_fn(output, target)
-            cum_loss += loss.item()
-            pred = output.argmax(dim=1, keepdim=True)
-            correct += pred.eq(target.view_as(pred)).sum().item()
+            cum_losses.append(loss.item())
+            # pred = output.argmax(dim=1, keepdim=True)
+            # correct += pred.eq(target.view_as(pred)).sum().item()
 
-    print(f"Accuracy: {correct / len(eval_dataset)}")
-    print(f"Avg Loss: {cum_loss / len(eval_dataset)}")
+    # print(f"Accuracy: {correct / len(eval_dataset)}")
+    print(f"Avg Loss: {sum(cum_losses) / len(cum_losses)}")
 
 
 def load_avg_model(model, master_pipes):
@@ -102,6 +104,7 @@ def run_coordinator(
     master_pipes,
     model_cls,
     model_kwargs,
+    dataloader_kwargs,
     loss_fn,
     eval_dataset,
     dataset_len,
@@ -144,12 +147,12 @@ def run_coordinator(
             start_cpu_time = time.process_time()
 
             load_avg_model(model, master_pipes)
-            eval_model(model, eval_dataset, loss_fn, batch_size)
+            eval_model(model, eval_dataset, loss_fn, batch_size, dataloader_kwargs)
 
         with lock:
             cpu_times[0] = cpu_time_taken
 
-        torch.save(model, save_path)
+        torch.save(model.state_dict(), save_path)
 
     except Exception as e:
         print(f"Master process encountered an error: {e}")

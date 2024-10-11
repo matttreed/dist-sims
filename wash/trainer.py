@@ -28,6 +28,7 @@ def insert_parameters_by_indices(model, indices_dict, param_values):
 
 
 def train_epoch(model, optimizer, dataloader, loss_fn, shuffle_interval, conn):
+    model.train()
     for i, (data, target) in enumerate(dataloader):
         optimizer.zero_grad()
         output = model(data)
