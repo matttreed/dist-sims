@@ -1,9 +1,9 @@
 import torch
-from wash import wash_algorithm
+from wash import simulate_wash
 import torchvision.transforms as transforms
 from torchvision.datasets import MNIST
 from torch.utils.data import DataLoader, TensorDataset
-from model import CNNModel
+from examples.models import CNNModel
 import torch.nn.functional as F
 
 
@@ -21,7 +21,7 @@ if __name__ == "__main__":
     train_dataset = MNIST(root="./data", train=True, transform=transform, download=True)
     test_dataset = MNIST(root="./data", train=False, transform=transform, download=True)
 
-    wash_algorithm(
+    simulate_wash(
         model_cls=CNNModel,
         model_kwargs={
             "input_channels": 1,
@@ -31,13 +31,14 @@ if __name__ == "__main__":
         },
         optimizer_cls=torch.optim.AdamW,
         optimizer_kwargs={"lr": 0.01},
+        dataloader_kwargs={},
         train_dataset=train_dataset,
         eval_dataset=test_dataset,
         loss_fn=F.cross_entropy,
         num_workers=10,
-        num_epochs=10,
-        shuffle_interval=2,
-        p_shuffle=0.05,
+        num_epochs=1,
+        shuffle_interval=1,
+        p_shuffle=0.01,
         batch_size=32,
-        split_dataset=True,
+        split_dataset=False,
     )

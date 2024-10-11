@@ -5,8 +5,8 @@ from torchtext.data.utils import get_tokenizer
 from torchtext.vocab import build_vocab_from_iterator
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
-from model import SmallGenerativeTransformer
-from wash import wash_algorithm
+from examples.models import SmallGenerativeTransformer
+from wash import simulate_wash
 
 
 import torch
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     train_dataset = NextTokenDataset(train_iter, tokenizer, vocab, max_len=512)
     test_dataset = NextTokenDataset(test_iter, tokenizer, vocab, max_len=512)
 
-    wash_algorithm(
+    simulate_wash(
         model_cls=SmallGenerativeTransformer,
         model_kwargs={
             "vocab_size": vocab_size,
@@ -94,6 +94,6 @@ if __name__ == "__main__":
         num_epochs=1,
         shuffle_interval=1,
         p_shuffle=0.01,
-        batch_size=32,
+        batch_size=16,
         split_dataset=True,
     )

@@ -1,9 +1,9 @@
 import torch
-from wash import wash_algorithm
+from wash import simulate_wash
 import torchvision.transforms as transforms
 from torchvision.datasets import MNIST
 from torch.utils.data import DataLoader, TensorDataset
-from model import CNNModel
+from examples.models import CNNModel
 import torch.nn.functional as F
 
 
