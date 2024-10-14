@@ -8,12 +8,12 @@ Example usage can be found in the `examples` directory.
 
 ```python
 
-from wash import simulate_wash
+from wash import WashingMachine
 from models import ModelArchitecture
 import torch.nn.functional as F
 from data import train_dataset, test_dataset
 
-simulate_wash(
+wm = WashingMachine(
     model_cls=ModelArchitecture,
     model_kwargs={
         "embedding_dim": 128,
@@ -34,6 +34,10 @@ simulate_wash(
     batch_size=16,
     split_dataset=False,
     save_path="outputs/final_model.pth",
-):
+)
+
+wm.load_model("chkpts/model_chkpt.pth")
+
+wm.train()
 
 ```

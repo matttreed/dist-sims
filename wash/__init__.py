@@ -1,1 +1,1 @@
-from wash.wash import simulate_wash
+from wash.WashingMachine import WashingMachine

@@ -1,9 +1,10 @@
 import torch
 import torch.random
-from wash import simulate_wash
+from wash import WashingMachine
 from torch.utils.data import Dataset
 from examples.models import SimpleModel
 import torch.nn.functional as F
+import random
 
 
 class SimpleDataset(Dataset):
@@ -23,16 +24,17 @@ class SimpleDataset(Dataset):
 if __name__ == "__main__":
 
     torch.manual_seed(12345)
+    random.seed(12345)
 
-    train_dataset = SimpleDataset(torch.randn((64, 5)), torch.randn((64, 5)))
-    test_dataset = SimpleDataset(torch.randn((64, 5)), torch.randn((64, 5)))
+    train_dataset = SimpleDataset(torch.randn((2048, 5)), torch.randn((2048, 1)))
+    test_dataset = SimpleDataset(torch.randn((2048, 5)), torch.randn((2048, 1)))
 
-    simulate_wash(
+    wm = WashingMachine(
         model_cls=SimpleModel,
         model_kwargs={
             "input_size": 5,
             "hidden_size": 10,
-            "output_size": 5,
+            "output_size": 1,
         },
         optimizer_cls=torch.optim.AdamW,
         optimizer_kwargs={"lr": 0.01},
@@ -40,10 +42,12 @@ if __name__ == "__main__":
         train_dataset=train_dataset,
         eval_dataset=test_dataset,
         loss_fn=F.mse_loss,
-        num_workers=4,
-        num_epochs=10,
+        num_workers=1,
+        num_epochs=1,
         shuffle_interval=1,
         p_shuffle=0.10,
         batch_size=16,
         split_dataset=True,
     )
+
+    wm.train()
