@@ -26,14 +26,14 @@ if __name__ == "__main__":
     torch.manual_seed(12345)
     random.seed(12345)
 
-    train_dataset = SimpleDataset(torch.randn((2048, 5)), torch.randn((2048, 1)))
-    test_dataset = SimpleDataset(torch.randn((2048, 5)), torch.randn((2048, 1)))
+    train_dataset = SimpleDataset(torch.randn((2048, 2)), torch.randn((2048, 1)))
+    test_dataset = SimpleDataset(torch.randn((2048, 2)), torch.randn((2048, 1)))
 
     wm = WashingMachine(
         model_cls=SimpleModel,
         model_kwargs={
-            "input_size": 5,
-            "hidden_size": 10,
+            "input_size": 2,
+            "hidden_size": 4,
             "output_size": 1,
         },
         optimizer_cls=torch.optim.AdamW,
@@ -42,10 +42,10 @@ if __name__ == "__main__":
         train_dataset=train_dataset,
         eval_dataset=test_dataset,
         loss_fn=F.mse_loss,
-        num_workers=1,
+        num_workers=2,
         num_epochs=1,
         shuffle_interval=1,
-        p_shuffle=0.10,
+        p_shuffle=0.5,
         batch_size=16,
         split_dataset=True,
     )

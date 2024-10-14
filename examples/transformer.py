@@ -77,8 +77,9 @@ if __name__ == "__main__":
     train_dataset = NextTokenDataset(train_iter, tokenizer, vocab, max_len=512)
     test_dataset = NextTokenDataset(test_iter, tokenizer, vocab, max_len=512)
 
-    train_subset = Subset(train_dataset, indices=range(16 * 1500))
+    # train_subset = Subset(train_dataset, indices=range(16 * 1500))
     # test_subset = Subset(test_dataset, indices=range(16 * 100))
+    train_subset = train_dataset
     test_subset = test_dataset
 
     wm = WashingMachine(
@@ -95,7 +96,7 @@ if __name__ == "__main__":
         train_dataset=train_subset,
         eval_dataset=test_subset,
         loss_fn=CELoss,
-        num_workers=2,
+        num_workers=4,
         num_epochs=1,
         shuffle_interval=1,
         p_shuffle=0.01,

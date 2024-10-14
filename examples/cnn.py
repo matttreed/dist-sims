@@ -26,20 +26,20 @@ if __name__ == "__main__":
             "num_classes": 10,
         },
         optimizer_cls=torch.optim.AdamW,
-        optimizer_kwargs={"lr": 0.005},
+        optimizer_kwargs={"lr": 0.001},
         dataloader_kwargs={},
         train_dataset=train_dataset,
         eval_dataset=test_dataset,
         loss_fn=F.cross_entropy,
-        num_workers=10,
-        num_epochs=4,
+        num_workers=1,
+        num_epochs=1,
         shuffle_interval=1,
         p_shuffle=0.01,
         batch_size=32,
-        split_dataset=True,
+        split_dataset=False,
         save_path="outputs/cnn_model.pth",
     )
 
-    wm.load_model("outputs/cnn_model.pth")
+    # wm.load_model("outputs/cnn_model.pth")
 
     wm.train()

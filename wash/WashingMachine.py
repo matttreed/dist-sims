@@ -88,24 +88,29 @@ class WashingMachine:
 
             for param_idx in range(len(model_params[0])):
 
-                size = model_params[0][param_idx].numel()
-
-                num_to_select = int(size * self.p_shuffle)
-                random_indices = torch.randperm(size)[:num_to_select]
-
-                param_copies = [p[param_idx].clone() for p in model_params]
-                rotation_amount = (
-                    random.randint(1, self.num_workers - 1)
-                    if self.num_workers > 1
-                    else 0
+                params = torch.stack(
+                    [param[param_idx].view(-1) for param in model_params]
                 )
-                param_copies = (
-                    param_copies[rotation_amount:] + param_copies[:rotation_amount]
+                size = params.shape[1]
+                permutation_tensor = torch.rand(size, self.num_workers).argsort(dim=1)
+
+                masked_indices = torch.nonzero(
+                    torch.rand(size) < self.p_shuffle, as_tuple=True
+                )[0]
+                row_indices = permutation_tensor.T
+                column_indices = (
+                    torch.arange(params.shape[1])
+                    .unsqueeze(0)
+                    .expand(params.shape[0], -1)
                 )
 
-                for i in range(self.num_workers):
-                    model_params[i][param_idx].data.view(-1)[random_indices] = (
-                        param_copies[i].view(-1)[random_indices]
+                params[:, masked_indices] = params[row_indices, column_indices][
+                    :, masked_indices
+                ]
+
+                for model_idx, updated_param in enumerate(params):
+                    model_params[model_idx][param_idx].data.copy_(
+                        updated_param.view_as(model_params[model_idx][param_idx])
                     )
 
     def _eval_model(self):
@@ -122,13 +127,16 @@ class WashingMachine:
                 output = self.master_model(data)
                 loss = self.loss_fn(output, target)
                 cum_losses.append(loss.item())
-                pred = output.argmax(dim=1, keepdim=True)
-                correct += pred.eq(target.view_as(pred)).sum().item()
+                # pred = output.argmax(
+                #     dim=1, keepdim=True
+                # )  # TODO implement accuracy for arbitrary output type
+                # correct += pred.eq(target.view_as(pred)).sum().item()
 
-        print(f"Accuracy: {correct / len(self.eval_dataset)}")
+        # print(f"Accuracy: {correct / len(self.eval_dataset)}")
         print(f"Avg Loss: {sum(cum_losses) / len(cum_losses)}")
 
     def _load_master_model(self):
+        # TODO add different averaging methods
         averaged_params = deepcopy(self.models[0].state_dict())
 
         # for param in averaged_params:
