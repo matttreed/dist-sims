@@ -102,6 +102,7 @@ if __name__ == "__main__":
         p_shuffle=0.01,
         batch_size=16,
         split_dataset=True,
+        modulate_p_shuffle=True,
         save_path="outputs/transformer.pth",
     )
 

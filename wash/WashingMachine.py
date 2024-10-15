@@ -6,23 +6,76 @@ from tqdm import tqdm
 
 
 class WashingMachine:
+    """
+    A class for distributed training of models with parameter shuffling across workers.
+
+    Parameters:
+    ----------
+    model_cls : class
+        The class of the model to be instantiated for each worker (e.g., a neural network class).
+    model_kwargs : dict
+        A dictionary of keyword arguments to pass to the model constructor (e.g., layer sizes).
+    train_dataset : torch.utils.data.Dataset
+        The training dataset used by all workers.
+    eval_dataset : torch.utils.data.Dataset
+        The evaluation dataset used to test the models during or after training.
+    loss_fn : callable
+        The loss function used to compute the loss (e.g., `torch.nn.CrossEntropyLoss()`).
+    optimizer_cls : class, optional
+        The optimizer class (e.g., `torch.optim.AdamW`). Default is `torch.optim.AdamW`.
+    optimizer_kwargs : dict, optional
+        A dictionary of keyword arguments to pass to the optimizer (e.g., learning rate). Default is {"lr": 0.001}.
+    dataloader_kwargs : dict, optional
+        Additional arguments to pass to the `DataLoader` (e.g., `num_workers`, `pin_memory`). Default is an empty dictionary.
+    num_workers : int, optional
+        The number of model workers to train in parallel. Default is 4.
+    num_epochs : int, optional
+        The number of training epochs. Default is 10.
+    shuffle_interval : int, optional
+        How often (in epochs) to shuffle parameters between the models. Default is 1.
+    p_shuffle : float, optional
+        The base probability of shuffling each parameter. Default is 0.01.
+    batch_size : int, optional
+        The batch size for training and evaluation. Default is 16.
+    split_dataset : bool, optional
+        Whether to split the dataset across workers, ensuring each worker trains on different data. Default is False.
+    modulate_p_shuffle : bool, optional
+        Whether to modulate the shuffling probability based on layer depth. Default is True.
+    save_path : str, optional
+        Path to save the model checkpoints. If `None`, no checkpoints are saved. Default is None.
+
+    Attributes:
+    ----------
+    master_model : nn.Module
+        The master model used as the central reference for creating worker models.
+    models : list of nn.Module
+        A list containing the models for each worker.
+    dataloaders : dict
+        A dictionary containing the data loaders for 'train' and 'eval' datasets.
+    data_iters : list
+        A list of iterators for cycling through data in parallel across workers.
+    optimizers : list of optim.Optimizer
+        A list of optimizers for each worker.
+    """
+
     def __init__(
         self,
         model_cls,
         model_kwargs,
-        optimizer_cls,
-        optimizer_kwargs,
-        dataloader_kwargs,
         train_dataset,
         eval_dataset,
         loss_fn,
+        optimizer_cls=torch.optim.AdamW,
+        optimizer_kwargs={"lr": 0.001},
+        dataloader_kwargs={},
         num_workers=4,
         num_epochs=10,
         shuffle_interval=1,
-        p_shuffle=0.05,
+        p_shuffle=0.01,
         batch_size=16,
         split_dataset=False,
-        save_path="outputs/final_model.pth",
+        modulate_p_shuffle=True,  # Modules must be defined in order of depth
+        save_path=None,
     ) -> None:
         super().__init__()
         self.model_cls = model_cls
@@ -39,6 +92,7 @@ class WashingMachine:
         self.p_shuffle = p_shuffle
         self.batch_size = batch_size
         self.split_dataset = split_dataset
+        self.modulate_p_shuffle = modulate_p_shuffle
         self.save_path = save_path
         self.master_model = None
         self.models = []
@@ -86,7 +140,15 @@ class WashingMachine:
         with torch.no_grad():
             model_params = [list(model.parameters()) for model in self.models]
 
-            for param_idx in range(len(model_params[0])):
+            L = len(model_params[0])
+
+            for param_idx in range(L):
+
+                p_shuffle = (
+                    self.p_shuffle
+                    if not self.modulate_p_shuffle
+                    else self.p_shuffle * (1 - param_idx / (L - 1))
+                )
 
                 params = torch.stack(
                     [param[param_idx].view(-1) for param in model_params]
@@ -94,15 +156,16 @@ class WashingMachine:
                 size = params.shape[1]
                 permutation_tensor = torch.rand(size, self.num_workers).argsort(dim=1)
 
-                masked_indices = torch.nonzero(
-                    torch.rand(size) < self.p_shuffle, as_tuple=True
-                )[0]
                 row_indices = permutation_tensor.T
                 column_indices = (
                     torch.arange(params.shape[1])
                     .unsqueeze(0)
                     .expand(params.shape[0], -1)
                 )
+
+                masked_indices = torch.nonzero(
+                    torch.rand(size) < p_shuffle, as_tuple=True
+                )[0]
 
                 params[:, masked_indices] = params[row_indices, column_indices][
                     :, masked_indices
@@ -127,12 +190,12 @@ class WashingMachine:
                 output = self.master_model(data)
                 loss = self.loss_fn(output, target)
                 cum_losses.append(loss.item())
-                # pred = output.argmax(
-                #     dim=1, keepdim=True
-                # )  # TODO implement accuracy for arbitrary output type
-                # correct += pred.eq(target.view_as(pred)).sum().item()
+                pred = output.argmax(
+                    dim=1, keepdim=True
+                )  # TODO implement accuracy for arbitrary output type
+                correct += pred.eq(target.view_as(pred)).sum().item()
 
-        # print(f"Accuracy: {correct / len(self.eval_dataset)}")
+        print(f"Accuracy: {correct / len(self.eval_dataset)}")
         print(f"Avg Loss: {sum(cum_losses) / len(cum_losses)}")
 
     def _load_master_model(self):
@@ -210,4 +273,5 @@ class WashingMachine:
             self._load_master_model()
             self._eval_model()
 
-        torch.save(self.master_model.state_dict(), self.save_path)
+        if self.save_path:
+            torch.save(self.master_model.state_dict(), self.save_path)
