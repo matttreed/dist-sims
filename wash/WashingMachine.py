@@ -271,7 +271,8 @@ class WashingMachine:
             self._train_epoch()
 
             self._load_master_model()
-            self._eval_model()
+            if self.eval_dataset:
+                self._eval_model()
 
         if self.save_path:
             torch.save(self.master_model.state_dict(), self.save_path)
