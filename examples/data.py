@@ -37,7 +37,7 @@ class TextDataset(Dataset):
         """
         start_idx = idx * (self.seq_length + 1)
         end_idx = start_idx + (self.seq_length + 1)
-        sequence = self.data[start_idx:end_idx]
+        sequence = self.data[start_idx:end_idx].astype(np.int32)
 
         x = torch.tensor(sequence[:-1], dtype=torch.long)  # Input sequence
         y = torch.tensor(sequence[1:], dtype=torch.long)
@@ -47,24 +47,29 @@ class TextDataset(Dataset):
 
 # Example usage
 if __name__ == "__main__":
-    bin_file_path = "data/tinystories/tinystories_tokenized_with_eot.bin"
+    bin_file_path = "data/owt/openwebtext.bin"
     dataset = TextDataset(
-        bin_file_path, seq_length=1024
+        bin_file_path, seq_length=1024, dtype=np.uint16
     )  # Fixed context length of 1024 tokens
 
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
 
     # Accessing the first (x, y) pair in the dataset
-    i = len(dataset) - 1
+    i = 0
+
     while True:
         x, y = dataset[i]
         print(f"First sequence (x): {x}")
         print(f"Next token (y): {y}")
+        print(f"len(x): {len(x)}, len(y): {len(y)}")
+
+        num_eos_tokens = (x == tokenizer.eos_token_id).sum()
+        print(f"Number of EOS tokens in x: {num_eos_tokens}")
 
         x_translated = tokenizer.decode(x)
         y_translated = tokenizer.decode(y)
-        print(f"First sequence (x): {x_translated}")
-        print(f"Next token (y): {y_translated}")
+        # print(f"First sequence (x): {x_translated}")
+        # print(f"Next token (y): {y_translated}")
         i += 1
 
         input()

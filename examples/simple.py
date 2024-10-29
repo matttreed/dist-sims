@@ -1,6 +1,6 @@
 import torch
 import torch.random
-from wash import WashingMachine
+from dist import WashingMachine
 from torch.utils.data import Dataset
 from examples.models import SimpleModel
 import torch.nn.functional as F
@@ -39,15 +39,16 @@ if __name__ == "__main__":
         optimizer_cls=torch.optim.AdamW,
         optimizer_kwargs={"lr": 0.01},
         dataloader_kwargs={},
+        synchronize_method="wash",
         train_dataset=train_dataset,
         eval_dataset=test_dataset,
         loss_fn=F.mse_loss,
         num_workers=2,
         num_epochs=1,
-        shuffle_interval=1,
+        synchronize_interval=1,
         p_shuffle=0.5,
         batch_size=16,
-        split_dataset=True,
+        data_parallel=False,
     )
 
     wm.train()

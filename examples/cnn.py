@@ -1,5 +1,5 @@
 import torch
-from wash import WashingMachine
+from dist import WashingMachine
 import torchvision.transforms as transforms
 from torchvision.datasets import MNIST, CIFAR100
 from models import CNNModel
@@ -35,16 +35,24 @@ if __name__ == "__main__":
         optimizer_cls=torch.optim.AdamW,
         optimizer_kwargs={"lr": 0.001},
         dataloader_kwargs={},
+        synchronize_method="wash",
+        synchronize_interval=1,
+        eval_interval=100,
+        # outer_optimizer_cls=torch.optim.SGD,
+        # outer_optimizer_kwargs={
+        #     "lr": 0.001,
+        #     "nesterov": True,
+        #     "momentum": 0.9,
+        # },
         train_dataset=train_dataset,
         eval_dataset=test_dataset,
         loss_fn=F.cross_entropy,
-        num_workers=2,
+        num_workers=1,
         num_epochs=1,
-        shuffle_interval=1,
-        p_shuffle=0.05,
+        p_shuffle=0.01,
         batch_size=8,
-        split_dataset=False,
-        save_path="outputs/cnn_model.pth",
+        data_parallel=True,
+        # save_dir="outputs/cnn",
     )
 
     # wm.load_model("outputs/cnn_model.pth")

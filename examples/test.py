@@ -1,15 +1,111 @@
-from models import SmallGenerativeTransformer
+import torch
+import torch.nn.functional as F
+from torchtext.datasets import AG_NEWS
+from torchtext.data.utils import get_tokenizer
+from torchtext.vocab import build_vocab_from_iterator
+from torch.utils.data import DataLoader
+from torch.nn.utils.rnn import pad_sequence
+from examples.models import SmallGenerativeTransformer
+from dist import WashingMachine
+from torch.utils.data import Subset
 
 
-def get_layer_depth(model, depth=0):
-    for child in model.children():
-        print(f"Depth {depth}: Type {child.__class__.__name__}")
-        get_layer_depth(child, depth + 1)
+import torch
+from torch.utils.data import Dataset
+from torch.nn.utils.rnn import pad_sequence
+
+PAD_IDX = 0
+
+
+def CELoss(inputs, targets):
+    return F.cross_entropy(
+        inputs.view(-1, inputs.size(-1)), targets.view(-1), ignore_index=PAD_IDX
+    )
+
+
+class NextTokenDataset(Dataset):
+    def __init__(self, data_iter, tokenizer, vocab, max_len=512):
+        self.vocab = vocab
+        self.tokenizer = tokenizer
+        self.max_len = max_len
+
+        self.data = []
+        for _, text in data_iter:
+            tokens = vocab(tokenizer(text))
+            tokens = torch.tensor(tokens, dtype=torch.long)
+            if len(tokens) > max_len:
+                tokens = tokens[:max_len]
+
+            input_tokens = tokens[:-1]
+            target_tokens = tokens[1:]
+
+            self.data.append((input_tokens, target_tokens))
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        input_tokens, target_tokens = self.data[idx]
+
+        return input_tokens, target_tokens
+
+
+def collate_fn(batch):
+    input_batch, target_batch = zip(*batch)
+    input_batch = pad_sequence(input_batch, batch_first=True, padding_value=PAD_IDX)
+    target_batch = pad_sequence(target_batch, batch_first=True, padding_value=PAD_IDX)
+    return input_batch, target_batch
+
+
+def yield_tokens(data_iter, tokenizer):
+    for _, text in data_iter:
+        yield tokenizer(text)
 
 
 if __name__ == "__main__":
-    model = SmallGenerativeTransformer(
-        vocab_size=1000, embed_size=128, num_heads=4, num_layers=2
+
+    train_iter, test_iter = AG_NEWS(split=("train", "test"))
+
+    tokenizer = get_tokenizer("basic_english")
+
+    vocab = build_vocab_from_iterator(
+        yield_tokens(train_iter, tokenizer), specials=["<pad>", "<unk>"]
     )
-    for depth, (name, module) in enumerate(model.named_modules()):
-        print(f"Depth {depth}: Layer {name}, Type: {module.__class__.__name__}")
+    vocab.set_default_index(vocab["<unk>"])
+
+    vocab_size = len(vocab)
+    train_dataset = NextTokenDataset(train_iter, tokenizer, vocab, max_len=512)
+    test_dataset = NextTokenDataset(test_iter, tokenizer, vocab, max_len=512)
+
+    # train_subset = Subset(train_dataset, indices=range(16 * 1500))
+    # test_subset = Subset(test_dataset, indices=range(16 * 100))
+    train_subset = train_dataset
+    test_subset = test_dataset
+
+    print(vocab_size)
+
+    wm = WashingMachine(
+        model_cls=SmallGenerativeTransformer,
+        model_kwargs={
+            "vocab_size": vocab_size,
+            "embed_size": 128,
+            "num_heads": 4,
+            "num_layers": 2,
+        },
+        optimizer_cls=torch.optim.AdamW,
+        optimizer_kwargs={"lr": 0.01},
+        dataloader_kwargs={"collate_fn": collate_fn},
+        train_dataset=train_subset,
+        eval_dataset=test_subset,
+        loss_fn=CELoss,
+        num_workers=4,
+        num_epochs=1,
+        shuffle_interval=1,
+        p_shuffle=0.01,
+        batch_size=16,
+        split_dataset=True,
+        modulate_p_shuffle=True,
+        save_path="outputs/transformer.pth",
+    )
+
+    wm.train()
