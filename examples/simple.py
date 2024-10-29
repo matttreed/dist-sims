@@ -1,6 +1,6 @@
 import torch
 import torch.random
-from dist import WashingMachine
+from distsims import WashingMachine
 from torch.utils.data import Dataset
 from examples.models import SimpleModel
 import torch.nn.functional as F

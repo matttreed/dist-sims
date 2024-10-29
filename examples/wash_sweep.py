@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from dist import WashingMachine
+from distsims import WashingMachine
 from examples.nanogpt import GPTConfig, GPT
 from data import TextDataset
 import numpy as np

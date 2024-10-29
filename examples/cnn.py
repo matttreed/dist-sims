@@ -1,5 +1,5 @@
 import torch
-from dist import WashingMachine
+from distsims import WashingMachine
 import torchvision.transforms as transforms
 from torchvision.datasets import MNIST, CIFAR100
 from models import CNNModel

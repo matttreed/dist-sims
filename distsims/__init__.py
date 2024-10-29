@@ -1,0 +1,1 @@
+from distsims.WashingMachine import WashingMachine
