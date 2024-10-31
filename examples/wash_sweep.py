@@ -16,13 +16,13 @@ if __name__ == "__main__":
     #     block_size=256, vocab_size=50304, n_layer=2, n_head=4, n_embd=128
     # )
 
-    gptconf = GPTConfig(
-        block_size=512, vocab_size=50304, n_layer=12, n_head=8, n_embd=512
-    )
-
     # gptconf = GPTConfig(
-    #     block_size=256, vocab_size=50304, n_layer=4, n_head=8, n_embd=128
+    #     block_size=512, vocab_size=50304, n_layer=12, n_head=8, n_embd=512
     # )
+
+    gptconf = GPTConfig(
+        block_size=256, vocab_size=50304, n_layer=4, n_head=8, n_embd=128
+    )
 
     train_dataset = TextDataset(
         "data/owt/openwebtext.bin",
@@ -30,9 +30,9 @@ if __name__ == "__main__":
         seq_length=gptconf.block_size,
     )
 
-    for num_workers in [1, 4]:
+    for p_shuffle in [0.01, 0]:
 
-        batch_size = 16
+        batch_size = 8
 
         # if num_workers == 0:
         #     num_workers = 1
@@ -44,25 +44,27 @@ if __name__ == "__main__":
                 "config": gptconf,
             },
             optimizer_cls=torch.optim.AdamW,
-            optimizer_kwargs={"lr": 0.0005},
-            dataloader_kwargs={"shuffle": True},
-            synchronize_method="wash",
-            synchronize_interval=1,
+            optimizer_kwargs={"lr": 0.001},
+            outer_optimizer_cls=torch.optim.SGD,
+            outer_optimizer_kwargs={"lr": 0.7, "nesterov": True, "momentum": 0.9},
+            synchronize_method="avg",
+            synchronize_interval=100,
+            wash_interval=1,
             eval_interval=500,
             train_dataset=train_dataset,
             eval_dataset=train_dataset,
             loss_fn=CELoss,
-            num_workers=num_workers,
+            num_workers=4,
             num_epochs=1,
             p_shuffle=0.01,
             batch_size=batch_size,
             data_parallel=True,
             modulate_p_shuffle=False,
-            save_dir=f"outputs/wash_sweep_{num_workers}_workers",
+            # save_dir=f"outputs/wash_sweep_{num_workers}_workers",
             wandb_project="wash-sweep",
             max_local_step=5000,
         )
 
-        wm.load_model("outputs/transformer_4/ckpt_epoch_0_iter_10000.pth")
+        # wm.load_model("outputs/transformer_4/ckpt_epoch_0_iter_10000.pth")
 
         wm.train()

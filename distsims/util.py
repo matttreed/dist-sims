@@ -1,6 +1,18 @@
 import torch
 import torch.nn.functional as F
 from itertools import combinations
+import time
+
+
+def time_function(func):
+    def wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = func(*args, **kwargs)
+        end_time = time.perf_counter()
+        # print(f"{func.__name__} took {end_time - start_time:.6f} seconds")
+        return result
+
+    return wrapper
 
 
 def cosine_similarity(models):
@@ -96,3 +108,52 @@ def parameter_correlation(models):
 
     # Return the average correlation across all model pairs
     return sum(correlations) / len(correlations)
+
+    # according to gradient magnitude
+    # def _shuffle_params(self):
+    #     with torch.no_grad():
+    #         model_params = [list(model.parameters()) for model in self.models]
+
+    #         L = len(model_params[0])
+
+    #         for param_idx in range(L):
+
+    #             p_shuffle = (
+    #                 self.p_shuffle
+    #                 if not self.modulate_p_shuffle
+    #                 else self.p_shuffle * (1 - param_idx / (L - 1))
+    #             )
+
+    #             params = torch.stack(
+    #                 [model[param_idx].view(-1) for model in model_params]
+    #             )
+    #             size = params.shape[1]
+
+    #             gradient_magnitudes = torch.stack(
+    #                 [model[param_idx].grad.view(-1).abs() for model in model_params]
+    #             ).sum(dim=0)
+
+    #             masked_indices = torch.topk(gradient_magnitudes, int(p_shuffle * size))[
+    #                 1
+    #             ]
+    #             permutation_tensor = torch.rand(size, self.num_workers).argsort(
+    #                 dim=1
+    #             )  # TODO: shuffle p is actually p (1-1/Num workers) since might share with self
+    #             row_indices = permutation_tensor.T
+    #             column_indices = (
+    #                 torch.arange(params.shape[1])
+    #                 .unsqueeze(0)
+    #                 .expand(params.shape[0], -1)
+    #             )
+
+    #             # masked_indices = torch.nonzero(
+    #             #     torch.rand(size) < p_shuffle, as_tuple=True
+    #             # )[0]
+
+    #             params[:, masked_indices] = params[row_indices, column_indices][
+    #                 :, masked_indices
+    #             ]
+
+    #             for model_idx, updated_param in enumerate(params):
+    #                 model_params[model_idx][param_idx].data.copy_(
+    #                     updated_param.view_as(model_params[model_idx][param_idx])
