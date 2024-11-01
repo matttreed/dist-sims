@@ -6,7 +6,7 @@ import numpy as np
 
 # Load the OpenWebText dataset from HuggingFace
 def download_openwebtext():
-    dataset = load_dataset("openwebtext", split="train")
+    dataset = load_dataset("openwebtext", split="train", streaming=True)
     return dataset
 
 

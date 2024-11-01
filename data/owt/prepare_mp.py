@@ -59,7 +59,7 @@ def main():
         )
 
     # Step 5: Sequentially write each chunk to the binary file
-    output_file = "openwebtext_tokenized_with_eot.bin"
+    output_file = "openwebtext_tokenized_with_eot_mp.bin"
     for tokenized_chunk in tokenized_chunks:
         save_to_bin_file(tokenized_chunk, output_file)
 
