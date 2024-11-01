@@ -2,6 +2,7 @@ import torch
 from transformers import AutoTokenizer
 from datasets import load_dataset
 import numpy as np
+from multiprocessing import cpu_count
 
 
 # Load the OpenWebText dataset from HuggingFace
@@ -18,7 +19,9 @@ def tokenize_dataset_with_eot(dataset, tokenizer, eot_token_id):
         tokenized["input_ids"].append(eot_token_id)
         return tokenized
 
-    tokenized_dataset = dataset.map(tokenize_function, batched=False)
+    tokenized_dataset = dataset.map(
+        tokenize_function, batched=False, num_proc=cpu_count()
+    )
     return tokenized_dataset
 
 
