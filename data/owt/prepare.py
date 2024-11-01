@@ -32,7 +32,7 @@ def save_tokenized_to_bin(tokenized_dataset, output_file):
             input_ids = entry["input_ids"]
             # Convert PyTorch Tensor to NumPy array
             input_ids_np = np.array(
-                input_ids, dtype=np.int32
+                input_ids, dtype=np.uint16
             )  # Ensure it's an integer type
             input_ids_np.tofile(f)  # Now we can use tofile
 
