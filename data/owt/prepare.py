@@ -3,6 +3,7 @@ from transformers import AutoTokenizer
 from datasets import load_dataset
 import numpy as np
 from multiprocessing import cpu_count
+from tqdm import tqdm
 
 
 # Load the OpenWebText dataset from HuggingFace

@@ -236,9 +236,10 @@ class WashingMachine:
         cum_losses = []
         with torch.no_grad():
             for i in range(self.eval_iters):  # TODO MAGIC NUMBER
-                data, target = next(self.data_iter)
-                output = self.master_model(data)
-                loss = self.loss_fn(output, target)
+                x, y = next(self.data_iter)
+                x, y = x.to(self.device), y.to(self.device)
+                output = self.master_model(x)
+                loss = self.loss_fn(output, y)
                 cum_losses.append(loss.item())
                 # pred = output.argmax(
                 #     dim=1, keepdim=True
