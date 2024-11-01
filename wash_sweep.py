@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
-from distsims import WashingMachine
-from examples.nanogpt import GPTConfig, GPT
+from dist import WashingMachine
+from nanogpt import GPTConfig, GPT
 from data import TextDataset
 import numpy as np
 
@@ -30,7 +30,7 @@ if __name__ == "__main__":
         seq_length=gptconf.block_size,
     )
 
-    for p_shuffle in [0.01, 0]:
+    for num_workers in [1, 4]:
 
         batch_size = 8
 
@@ -48,20 +48,20 @@ if __name__ == "__main__":
             outer_optimizer_cls=torch.optim.SGD,
             outer_optimizer_kwargs={"lr": 0.7, "nesterov": True, "momentum": 0.9},
             synchronize_method="avg",
-            synchronize_interval=100,
+            synchronize_interval=None,
             wash_interval=1,
             eval_interval=500,
             train_dataset=train_dataset,
-            eval_dataset=train_dataset,
+            # eval_dataset=train_dataset,
             loss_fn=CELoss,
-            num_workers=4,
-            num_epochs=1,
+            num_workers=num_workers,
+            # num_epochs=1,
             p_shuffle=0.01,
             batch_size=batch_size,
-            data_parallel=True,
+            # data_parallel=True,
             modulate_p_shuffle=False,
             # save_dir=f"outputs/wash_sweep_{num_workers}_workers",
-            wandb_project="wash-sweep",
+            # wandb_project="wash-sweep",
             max_local_step=5000,
         )
 

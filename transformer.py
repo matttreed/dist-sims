@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
-from distsims import WashingMachine
-from examples.nanogpt import GPTConfig, GPT
+from dist import WashingMachine
+from nanogpt import GPTConfig, GPT
 from data import TextDataset
 import numpy as np
 import argparse
@@ -18,22 +18,20 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--p_shuffle", type=float, default=0.01)
-    parser.add_argument("--learning_rate", type=float, default=0.01)
+    parser.add_argument("--learning_rate", type=float, default=0.001)
     parser.add_argument("--outer_learning_rate", type=float, default=0.7)
     parser.add_argument("--num_epochs", type=int, default=1)
     parser.add_argument("--data_parallel", type=bool, default=True)
     parser.add_argument("--wash_interval", type=int, default=1)
-    parser.add_argument("--synchronize_interval", type=int, default=10)
-    parser.add_argument("--wandb_project", type=str, default="wash-sweep")
     parser.add_argument("--max_local_step", type=int, default=5000)
     parser.add_argument("--save_dir", type=str, default=None)
     parser.add_argument("--model_path", type=str, default=None)
     parser.add_argument("--wandb_project", type=str, default=None)
     parser.add_argument("--eval_interval", type=int, default=500)
+    parser.add_argument("--synchronize_interval", type=int, default=None)
     parser.add_argument(
-        "--synchronize_method", type=str, choices=["wash", "avg"], default="wash"
+        "--synchronize_method", type=str, choices=["diloco", "avg"], default="avg"
     )
-    parser.add_argument("--max_local_step", type=int, default=5000)
     parser.add_argument("--vocab_size", type=int, default=50304)
     parser.add_argument("--block_size", type=int, default=512)
     parser.add_argument("--num_layers", type=int, default=12)

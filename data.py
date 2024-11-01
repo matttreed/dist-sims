@@ -45,6 +45,29 @@ class TextDataset(Dataset):
         return x, y
 
 
+def stream_batches(dataset, batch_size, sequence_size, tokenizer):
+    buffer = []
+    for example in dataset:
+        # Tokenize text and convert to input IDs
+        tokens = tokenizer(example["text"], truncation=True, max_length=sequence_size)[
+            "input_ids"
+        ]
+
+        # Add tokens to buffer
+        buffer.extend(tokens)
+
+        # Process buffer into chunks of (sequence_size)
+        while len(buffer) >= sequence_size:
+            # Take the first sequence_size tokens and reshape
+            sequence = buffer[:sequence_size]
+            buffer = buffer[sequence_size:]
+
+            # Yield batch when we have enough sequences
+            if len(sequence) == sequence_size:
+                yield np.array(sequence).reshape(batch_size, sequence_size)
+                sequence = []
+
+
 # Example usage
 if __name__ == "__main__":
     bin_file_path = "data/owt/openwebtext.bin"

@@ -5,7 +5,7 @@ import random
 import os
 from tqdm import tqdm
 import wandb
-from distsims.util import (
+from util import (
     euclidean_distance,
     parameter_correlation,
     mean_squared_difference,
@@ -235,6 +235,8 @@ class WashingMachine:
         with torch.no_grad():
             for i in range(50):  # TODO MAGIC NUMBER
                 data, target = next(self.data_iter)
+                print(data)
+                input()
                 output = self.master_model(data)
                 loss = self.loss_fn(output, target)
                 cum_losses.append(loss.item())
@@ -280,7 +282,7 @@ class WashingMachine:
 
             for model, optimizer in zip(self.models, self.optimizers):
                 x, y = next(self.data_iter)
-                x, y = x.to(self.self.device), y.to(self.self.device)
+                x, y = x.to(self.device), y.to(self.device)
                 optimizer.zero_grad()
                 output = model(x)
                 loss = self.loss_fn(output, y)
@@ -300,11 +302,7 @@ class WashingMachine:
     # @time_function
     def _train_epoch(self):
 
-        total_iter = (
-            len(self.train_dataset) / (self.num_workers * self.batch_size)
-            if self.data_parallel
-            else len(self.train_dataset) / (self.batch_size)
-        )
+        total_iter = len(self.train_dataset) / (self.num_workers * self.batch_size)
 
         total_iter = min(total_iter, self.max_local_step)
 
