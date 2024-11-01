@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--p_shuffle", type=float, default=0.01)
     parser.add_argument("--learning_rate", type=float, default=0.001)
@@ -28,6 +28,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", type=str, default=None)
     parser.add_argument("--wandb_project", type=str, default=None)
     parser.add_argument("--eval_interval", type=int, default=500)
+    parser.add_argument("--eval_iters", type=int, default=100)
     parser.add_argument("--synchronize_interval", type=int, default=None)
     parser.add_argument(
         "--synchronize_method", type=str, choices=["diloco", "avg"], default="avg"
@@ -80,6 +81,7 @@ if __name__ == "__main__":
         save_dir=args.save_dir,
         wandb_project=args.wandb_project,
         max_local_step=args.max_local_step,
+        eval_iters=args.eval_iters,
     )
 
     if args.model_path:

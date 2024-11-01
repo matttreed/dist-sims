@@ -31,6 +31,7 @@ class WashingMachine:
         wash_interval=1,
         ckpt_interval=None,
         eval_interval=None,
+        eval_iters=50,
         p_shuffle=0.01,
         batch_size=16,
         modulate_p_shuffle=False,  # Modules must be defined in order of depth
@@ -59,6 +60,7 @@ class WashingMachine:
         self.wash_interval = wash_interval
         self.ckpt_interval = ckpt_interval
         self.eval_interval = eval_interval
+        self.eval_iters = eval_iters
         self.p_shuffle = p_shuffle
         self.batch_size = batch_size
         self.modulate_p_shuffle = modulate_p_shuffle
@@ -233,10 +235,8 @@ class WashingMachine:
         # correct = 0
         cum_losses = []
         with torch.no_grad():
-            for i in range(50):  # TODO MAGIC NUMBER
+            for i in range(self.eval_iters):  # TODO MAGIC NUMBER
                 data, target = next(self.data_iter)
-                print(data)
-                input()
                 output = self.master_model(data)
                 loss = self.loss_fn(output, target)
                 cum_losses.append(loss.item())

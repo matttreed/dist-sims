@@ -27,31 +27,32 @@ def tokenize_dataset_with_eot(dataset, tokenizer, eot_token_id):
 
 # Save the tokenized dataset into a .bin file
 def save_tokenized_to_bin(tokenized_dataset, output_file):
+    # Use tqdm to display progress while iterating over the dataset
     with open(output_file, "wb") as f:
-        for entry in tokenized_dataset:
+        for entry in tqdm(
+            tokenized_dataset, desc="Saving to .bin file", unit="entries"
+        ):
             input_ids = entry["input_ids"]
-            # Convert PyTorch Tensor to NumPy array
-            input_ids_np = np.array(
-                input_ids, dtype=np.uint16
-            )  # Ensure it's an integer type
-            input_ids_np.tofile(f)  # Now we can use tofile
+            # Convert to NumPy array and save in binary format
+            input_ids_np = np.array(input_ids, dtype=np.uint16)
+            input_ids_np.tofile(f)
 
 
 def main():
-    # Step 1: Download the OpenWebText dataset
+    print("Preparing OpenWebText dataset for training...")
+
+    print("Step 1: Downloading OpenWebText dataset...")
     dataset = download_openwebtext()
 
-    # Step 2: Initialize tokenizer
+    print("Step 2: Tokenizing the dataset...")
     tokenizer = AutoTokenizer.from_pretrained("gpt2")  # Using GPT-2 tokenizer
 
-    # Get the EOT token ID
     eot_token_id = tokenizer.eos_token_id  # Typically 50256 for GPT-2
 
-    # Step 3: Tokenize the dataset and add EOT tokens
     tokenized_dataset = tokenize_dataset_with_eot(dataset, tokenizer, eot_token_id)
 
-    # Step 4: Save the tokenized dataset to a .bin file
-    output_file = "openwebtext_tokenized_with_eot.bin"
+    print("Step 3: Saving the tokenized dataset to a .bin file...")
+    output_file = "openwebtext_2.bin"
     save_tokenized_to_bin(tokenized_dataset, output_file)
     print(f"Tokenized dataset with EOT saved to {output_file}")
 
