@@ -3,6 +3,7 @@ from transformers import AutoTokenizer
 from datasets import load_dataset
 import numpy as np
 from multiprocessing import Pool, cpu_count
+from tqdm import tqdm  # Import tqdm for progress tracking
 
 
 # Load the OpenWebText dataset from Hugging Face
@@ -27,7 +28,7 @@ def process_chunk(start_idx, end_idx, dataset, eot_token_id, tokenizer):
     return tokenized_chunk
 
 
-# Write all tokenized data to a single binary file
+# Write all tokenized data to a single binary file with progress
 def save_to_bin_file(tokenized_data, output_file):
     with open(output_file, "ab") as f:  # 'ab' mode to append
         for input_ids in tokenized_data:
@@ -48,20 +49,37 @@ def main():
     chunk_size = len(dataset) // num_cpus
     print(f"Using {num_cpus} CPUs for tokenization.")
 
-    # Step 4: Tokenize in parallel and collect results
-    with Pool(processes=num_cpus) as pool:
-        tokenized_chunks = pool.starmap(
-            process_chunk,
-            [
-                (i, min(i + chunk_size, len(dataset)), dataset, eot_token_id, tokenizer)
-                for i in range(0, len(dataset), chunk_size)
-            ],
-        )
+    # Step 4: Tokenize in parallel with progress tracking
+    output_file = "openwebtext_tokenized_with_eot.bin"
+    tokenized_chunks = []
 
-    # Step 5: Sequentially write each chunk to the binary file
-    output_file = "openwebtext_tokenized_with_eot_mp.bin"
-    for tokenized_chunk in tokenized_chunks:
-        save_to_bin_file(tokenized_chunk, output_file)
+    # Using tqdm to track each chunk
+    with Pool(processes=num_cpus) as pool:
+        # Wrap the pool.starmap call with tqdm for tracking
+        for tokenized_chunk in tqdm(
+            pool.starmap(
+                process_chunk,
+                [
+                    (
+                        i,
+                        min(i + chunk_size, len(dataset)),
+                        dataset,
+                        eot_token_id,
+                        tokenizer,
+                    )
+                    for i in range(0, len(dataset), chunk_size)
+                ],
+            ),
+            total=num_cpus,
+            desc="Tokenizing",
+        ):
+            tokenized_chunks.append(tokenized_chunk)
+
+    # Step 5: Sequentially write each chunk to the binary file with progress tracking
+    with tqdm(total=len(tokenized_chunks), desc="Saving to .bin file") as pbar:
+        for tokenized_chunk in tokenized_chunks:
+            save_to_bin_file(tokenized_chunk, output_file)
+            pbar.update(1)
 
     print(f"Tokenized dataset with EOT saved to {output_file}")
 
