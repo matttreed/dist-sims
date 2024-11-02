@@ -92,23 +92,28 @@ class WashingMachine:
             "diloco",
         ], "Invalid synchronization method"
 
+        wandb_config = {
+            # "num_epochs": self.num_epochs,
+            "batch_size": self.batch_size,
+            "inner_learning_rate": self.optimizer_kwargs.get("lr", None),
+            "outer_learning_rate": self.outer_optimizer_kwargs.get("lr", None),
+            "synchronize_method": self.synchronize_method,
+            "num_workers": self.num_workers,
+            "synchronize_interval": self.synchronize_interval,
+            "p_shuffle": self.p_shuffle,
+            "modulate_p_shuffle": self.modulate_p_shuffle,
+            "drift_penalty": self.drift_penalty,
+            "wash_interval": self.wash_interval,
+            "cosine_anneal": self.cosine_anneal,
+            "max_local_step": self.max_local_step,
+            "eval_iters": self.eval_iters,
+            "save_dir": self.save_dir,
+            "model_kwargs": self.model_kwargs,
+        }
+
         if self.wandb_project:
             wandb.init(project=self.wandb_project, config=self.wandb_config)
-            wandb.config.update(
-                {
-                    # "num_epochs": self.num_epochs,
-                    "batch_size": self.batch_size,
-                    "inner_learning_rate": self.optimizer_kwargs.get("lr", None),
-                    "outer_learning_rate": self.outer_optimizer_kwargs.get("lr", None),
-                    "synchronize_method": self.synchronize_method,
-                    "num_workers": self.num_workers,
-                    "synchronize_interval": self.synchronize_interval,
-                    "p_shuffle": self.p_shuffle,
-                    "modulate_p_shuffle": self.modulate_p_shuffle,
-                    "drift_penalty": self.drift_penalty,
-                    "wash_interval": self.wash_interval,
-                }
-            )
+            wandb.config.update(wandb_config)
 
     def _setup_master(self):
 
