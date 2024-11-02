@@ -38,9 +38,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_layers", type=int, default=12)
     parser.add_argument("--num_heads", type=int, default=8)
     parser.add_argument("--embed_size", type=int, default=512)
-    parser.add_argument(
-        "--cosine_anneal", type=bool, action="store_true", default=False
-    )
+    parser.add_argument("--cosine_anneal", action="store_true")
 
     args = parser.parse_args()
 
