@@ -5,6 +5,7 @@ import random
 import os
 from tqdm import tqdm
 import wandb
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from util import (
     euclidean_distance,
     parameter_correlation,
@@ -43,6 +44,7 @@ class WashingMachine:
         outer_optimizer_kwargs={"lr": 0.7, "nesterov": True, "momentum": 0.9},
         drift_penalty=None,
         max_local_step=None,
+        cosine_anneal=False,
     ) -> None:
         super().__init__()
         self.model_cls = model_cls
@@ -71,6 +73,7 @@ class WashingMachine:
         self.drift_penalty = drift_penalty
         self.local_step = 0
         self.max_local_step = max_local_step
+        self.cosine_anneal = cosine_anneal
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -80,6 +83,7 @@ class WashingMachine:
         self.dataloader = None
         self.data_iter = None
         self.optimizers = []
+        self.schedulers = []
         self._setup_master()
         self._setup_workers()
 
@@ -130,6 +134,12 @@ class WashingMachine:
             optimizer = self.optimizer_cls(model.parameters(), **self.optimizer_kwargs)
             self.models.append(model)
             self.optimizers.append(optimizer)
+            if self.cosine_anneal:
+                self.schedulers.append(
+                    CosineAnnealingLR(optimizer, T_max=self.max_local_step)
+                )
+            else:
+                self.schedulers.append(None)
 
     def _save_model(self, name):
         if not self.save_dir:
@@ -281,7 +291,9 @@ class WashingMachine:
 
             losses = []
 
-            for model, optimizer in zip(self.models, self.optimizers):
+            for model, optimizer, scheduler in zip(
+                self.models, self.optimizers, self.schedulers
+            ):
                 x, y = next(self.data_iter)
                 x, y = x.to(self.device), y.to(self.device)
                 optimizer.zero_grad()
@@ -291,6 +303,8 @@ class WashingMachine:
                     loss += self._drift_penalty(model, self.drift_penalty)
                 loss.backward()
                 optimizer.step()
+                if self.cosine_anneal:
+                    scheduler.step()
 
                 losses.append(loss.item())
 
@@ -350,6 +364,7 @@ class WashingMachine:
                         "loss": avg_loss,
                         "global_step": self.local_step * self.num_workers,
                         "local_step": self.local_step,
+                        "lr": self.optimizers[0].param_groups[0]["lr"],
                         # "euclidean_distance": euclidean_distance(self.models),
                         # "parameter_correlation": parameter_correlation(self.models),
                         # "mean_squared_difference": mean_squared_difference(self.models),

@@ -38,6 +38,9 @@ if __name__ == "__main__":
     parser.add_argument("--num_layers", type=int, default=12)
     parser.add_argument("--num_heads", type=int, default=8)
     parser.add_argument("--embed_size", type=int, default=512)
+    parser.add_argument(
+        "--cosine_anneal", type=bool, action="store_true", default=False
+    )
 
     args = parser.parse_args()
 
@@ -82,6 +85,7 @@ if __name__ == "__main__":
         wandb_project=args.wandb_project,
         max_local_step=args.max_local_step,
         eval_iters=args.eval_iters,
+        cosine_anneal=args.cosine_anneal,
     )
 
     if args.model_path:
