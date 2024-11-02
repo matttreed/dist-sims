@@ -25,7 +25,7 @@ if __name__ == "__main__":
     parser.add_argument("--wash_interval", type=int, default=1)
     parser.add_argument("--max_local_step", type=int, default=5000)
     parser.add_argument("--save_dir", type=str, default=None)
-    parser.add_argument("--checkpoint_interval", type=int, default=None)
+    parser.add_argument("--ckpt_interval", type=int, default=None)
     parser.add_argument("--model_path", type=str, default=None)
     parser.add_argument("--wandb_project", type=str, default=None)
     parser.add_argument("--eval_interval", type=int, default=500)
@@ -85,7 +85,7 @@ if __name__ == "__main__":
         max_local_step=args.max_local_step,
         eval_iters=args.eval_iters,
         cosine_anneal=args.cosine_anneal,
-        checkpoint_interval=args.checkpoint_interval,
+        ckpt_interval=args.ckpt_interval,
     )
 
     if args.model_path:
