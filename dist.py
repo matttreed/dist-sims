@@ -141,9 +141,11 @@ class WashingMachine:
             else:
                 self.schedulers.append(None)
 
-    def _save_model(self, name):
+    def _save_model(self):
         if not self.save_dir:
             return
+
+        name = f"iter_{self.local_step}"
         self._load_master_model()
         os.makedirs(self.save_dir, exist_ok=True)
         torch.save(self.master_model.state_dict(), f"{self.save_dir}/avg_{name}.pth")
@@ -351,7 +353,7 @@ class WashingMachine:
                 and self.local_step % self.ckpt_interval == 0
                 and self.local_step > 0
             ):
-                self._save_model(f"iter_{self.local_step}")
+                self._save_model()
 
             avg_loss = sum(losses) / len(losses)
 
@@ -384,7 +386,7 @@ class WashingMachine:
 
         self._eval_model()
 
-        self._save_model("final")
+        self._save_model()
 
         if self.wandb_project:
             wandb.finish()
