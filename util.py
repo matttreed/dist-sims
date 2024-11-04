@@ -2,6 +2,47 @@ import torch
 import torch.nn.functional as F
 from itertools import combinations
 import time
+import argparse
+import itertools
+import copy
+
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
+
+
+def arg_combinations(args):
+    # Identify arguments that are lists of values and should be iterated over
+    args_dict = vars(args)
+    list_args = {
+        key: value
+        for key, value in args_dict.items()
+        if isinstance(value, list) and len(value) > 1
+    }
+
+    # Identify static arguments (those with a single value)
+    static_args = {
+        key: value for key, value in args_dict.items() if key not in list_args
+    }
+
+    # Generate all combinations of list arguments
+    keys, values = zip(*list_args.items())
+    for combination in itertools.product(*values):
+        # Create a new Namespace with the static arguments
+        combined_args = copy.deepcopy(static_args)
+
+        # Add the current combination of list arguments
+        combined_args.update(dict(zip(keys, combination)))
+
+        # Yield a Namespace object with the combined arguments
+        yield argparse.Namespace(**combined_args)
 
 
 def time_function(func):

@@ -13,6 +13,7 @@ from util import (
     cosine_similarity,
     time_function,
 )
+import numpy as np
 
 
 class WashingMachine:
@@ -245,40 +246,63 @@ class WashingMachine:
         self._load_master_model()
         # self.master_model = deepcopy(self.models[0])
         self.master_model.eval()
+        for model in self.models:
+            model.eval()
         # print(euclidean_distance([self.master_model] + self.models))
         # print(parameter_correlation([self.master_model] + self.models))
         # print(self.master_model.state_dict().keys())
 
         # correct = 0
-        cum_losses = []
+        master_losses = []
+        local_losses = []
+        ensemble_losses = []
         with torch.no_grad():
             for i in range(self.eval_iters):  # TODO MAGIC NUMBER
                 x, y = next(self.data_iter)
                 x, y = x.to(self.device), y.to(self.device)
-                output = self.master_model(x)
-                loss = self.loss_fn(output, y)
-                cum_losses.append(loss.item())
-                # pred = output.argmax(
-                #     dim=1, keepdim=True
-                # )  # TODO implement accuracy for arbitrary output type
-                # correct += pred.eq(target.view_as(pred)).sum().item()
 
-        # accuracy = correct / len(self.eval_dataset)
-        avg_loss = sum(cum_losses) / len(cum_losses)
+                master_output = self.master_model(x)
+                master_loss = self.loss_fn(master_output, y)
+                master_losses.append(master_loss.item())
 
-        # print(cum_losses)
+                ensemble_logits = torch.zeros_like(master_output)
 
-        # print(f"Accuracy: {accuracy}")
-        print(f"Avg Loss: {avg_loss}")
+                for model in self.models:
+                    local_output = model(x)
+                    ensemble_logits += local_output / self.num_workers
+                    local_loss = self.loss_fn(local_output, y)
+                    local_losses.append(local_loss.item())
+
+                ensemble_loss = self.loss_fn(ensemble_logits, y)
+                ensemble_losses.append(ensemble_loss.item())
+
+        avg_master_loss = sum(master_losses) / len(master_losses)
+        master_loss_std = np.std(master_losses)
+        avg_local_loss = sum(local_losses) / len(local_losses)
+        local_loss_std = np.std(local_losses)
+        avg_ensemble_loss = sum(ensemble_losses) / len(ensemble_losses)
+        ensemble_loss_std = np.std(ensemble_losses)
+        param_correlation = parameter_correlation(self.models)
+
+        print(f"Avg Loss: {avg_master_loss:.4f}")
 
         if self.wandb_project:
             wandb.log(
                 {
                     "global_step": self.local_step * self.num_workers,
                     "local_step": self.local_step,
-                    "eval_loss": avg_loss,
+                    "master_loss": avg_master_loss,
+                    "master_loss_std": master_loss_std,
+                    "local_loss": avg_local_loss,
+                    "local_loss_std": local_loss_std,
+                    "ensemble_loss": avg_ensemble_loss,
+                    "ensemble_loss_std": ensemble_loss_std,
+                    "correlation": param_correlation,
                 }
             )
+
+        for model in self.models:
+            model.train()
 
     def _drift_penalty(self, model, weight=0.01):
         penalty = 0.0
@@ -297,6 +321,7 @@ class WashingMachine:
         try:
 
             losses = []
+            grad_norms = []
 
             for model, optimizer, scheduler in zip(
                 self.models, self.optimizers, self.schedulers
@@ -314,8 +339,15 @@ class WashingMachine:
                     scheduler.step()
 
                 losses.append(loss.item())
+                grad_norms.append(
+                    torch.norm(
+                        torch.cat(
+                            [p.grad.view(-1) for p in model.parameters() if p.grad]
+                        )
+                    )
+                )
 
-            return losses
+            return losses, grad_norms
 
         except StopIteration:
             self.data_iter = iter(self.dataloader)
@@ -333,7 +365,7 @@ class WashingMachine:
         while True:
 
             try:
-                losses = self._train_step()
+                losses, grad_norms = self._train_step()
             except StopIteration:
                 break
 
@@ -368,10 +400,13 @@ class WashingMachine:
             if self.wandb_project and self.local_step % 10 == 0:
                 wandb.log(
                     {
-                        "loss": avg_loss,
+                        "loss": random.choice(
+                            losses
+                        ),  # TODO using choice to show true variance (not scaled by sqrt(n))
                         "global_step": self.local_step * self.num_workers,
                         "local_step": self.local_step,
                         "lr": self.optimizers[0].param_groups[0]["lr"],
+                        "grad_norm": random.choice(grad_norms),
                         # "euclidean_distance": euclidean_distance(self.models),
                         # "parameter_correlation": parameter_correlation(self.models),
                         # "mean_squared_difference": mean_squared_difference(self.models),
