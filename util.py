@@ -22,9 +22,7 @@ def arg_combinations(args):
     # Identify arguments that are lists of values and should be iterated over
     args_dict = vars(args)
     list_args = {
-        key: value
-        for key, value in args_dict.items()
-        if isinstance(value, list) and len(value) > 1
+        key: value for key, value in args_dict.items() if isinstance(value, list)
     }
 
     # Identify static arguments (those with a single value)

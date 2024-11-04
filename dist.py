@@ -342,7 +342,11 @@ class WashingMachine:
                 grad_norms.append(
                     torch.norm(
                         torch.cat(
-                            [p.grad.view(-1) for p in model.parameters() if p.grad]
+                            [
+                                p.grad.view(-1)
+                                for p in model.parameters()
+                                if p.grad != None
+                            ]
                         )
                     )
                 )
