@@ -35,6 +35,7 @@ class WashingMachine:
         eval_interval=None,
         eval_iters=50,
         p_shuffle=0.01,
+        shuffle_type="random",
         batch_size=16,
         modulate_p_shuffle=False,  # Modules must be defined in order of depth
         save_dir=None,
@@ -65,6 +66,7 @@ class WashingMachine:
         self.eval_interval = eval_interval
         self.eval_iters = eval_iters
         self.p_shuffle = p_shuffle
+        self.shuffle_type = shuffle_type
         self.batch_size = batch_size
         self.modulate_p_shuffle = modulate_p_shuffle
         self.save_dir = save_dir
@@ -92,6 +94,8 @@ class WashingMachine:
             "avg",
             "diloco",
         ], "Invalid synchronization method"
+
+        assert self.shuffle_type in ["random", "ring"], "Invalid shuffle type"
 
         wandb_config = {
             # "num_epochs": self.num_epochs,
@@ -130,7 +134,7 @@ class WashingMachine:
             )
 
     def _setup_workers(self):
-        self.dataloader = DataLoader(self.train_dataset, batch_size=self.batch_size)
+        self.dataloader = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True)
         self.data_iter = iter(self.dataloader)
 
         for i in range(self.num_workers):
@@ -141,9 +145,7 @@ class WashingMachine:
             self.models.append(model)
             self.optimizers.append(optimizer)
             if self.cosine_anneal:
-                self.schedulers.append(
-                    CosineAnnealingLR(optimizer, T_max=self.max_local_step)
-                )
+                self.schedulers.append(CosineAnnealingLR(optimizer, T_max=self.max_local_step))
             else:
                 self.schedulers.append(None)
 
@@ -158,10 +160,7 @@ class WashingMachine:
         for i, model in enumerate(self.models):
             torch.save(model.state_dict(), f"{self.save_dir}/model_{i}_{name}.pth")
 
-    # @time_function
-    def _shuffle_params(self):
-        if self.p_shuffle == 0:
-            return
+    def _random_shuffle_params(self):
         with torch.no_grad():
             model_params = [list(model.parameters()) for model in self.models]
 
@@ -170,45 +169,67 @@ class WashingMachine:
             for param_idx in range(L):
 
                 p_shuffle = (
-                    self.p_shuffle
-                    if not self.modulate_p_shuffle
-                    else self.p_shuffle * (1 - param_idx / (L - 1))
+                    self.p_shuffle if not self.modulate_p_shuffle else self.p_shuffle * (1 - param_idx / (L - 1))
                 )
 
-                params = torch.stack(
-                    [param[param_idx].view(-1) for param in model_params]
-                )
+                params = torch.stack([param[param_idx].view(-1) for param in model_params])
                 size = params.shape[1]
                 permutation_tensor = torch.rand(size, self.num_workers).argsort(dim=1)
 
                 row_indices = permutation_tensor.T
-                column_indices = (
-                    torch.arange(params.shape[1])
-                    .unsqueeze(0)
-                    .expand(params.shape[0], -1)
-                )
+                column_indices = torch.arange(params.shape[1]).unsqueeze(0).expand(params.shape[0], -1)
 
-                masked_indices = torch.nonzero(
-                    torch.rand(size) < p_shuffle, as_tuple=True
-                )[0]
+                masked_indices = torch.nonzero(torch.rand(size) < p_shuffle, as_tuple=True)[0]
 
-                params[:, masked_indices] = params[row_indices, column_indices][
-                    :, masked_indices
-                ]
+                params[:, masked_indices] = params[row_indices, column_indices][:, masked_indices]
 
                 for model_idx, updated_param in enumerate(params):
                     model_params[model_idx][param_idx].data.copy_(
                         updated_param.view_as(model_params[model_idx][param_idx])
                     )
 
+    def _ring_shuffle_params(self):
+        with torch.no_grad():
+            model_params = [list(model.parameters()) for model in self.models]
+
+            L = len(model_params[0])
+
+            for param_idx in range(L):
+
+                p_shuffle = (
+                    self.p_shuffle if not self.modulate_p_shuffle else self.p_shuffle * (1 - param_idx / (L - 1))
+                )
+
+                params = torch.stack([param[param_idx].view(-1) for param in model_params])
+                size = params.shape[1]
+                permutation_tensor = torch.rand(size, self.num_workers).argsort(dim=1)
+
+                row_indices = permutation_tensor.T
+                column_indices = torch.arange(params.shape[1]).unsqueeze(0).expand(params.shape[0], -1)
+
+                masked_indices = torch.nonzero(torch.rand(size) < p_shuffle, as_tuple=True)[0]
+
+                params[:, masked_indices] = params[row_indices, column_indices][:, masked_indices]
+
+                for model_idx, updated_param in enumerate(params):
+                    model_params[model_idx][param_idx].data.copy_(
+                        updated_param.view_as(model_params[model_idx][param_idx])
+                    )
+
+    # @time_function
+    def _shuffle_params(self):
+        if self.p_shuffle == 0:
+            return
+        if self.shuffle_type == "random":
+            self._random_shuffle_params()
+        elif self.shuffle_type == "ring":
+            self._ring_shuffle_params()
+
     def _outer_step(self):
 
         self.master_optimizer.zero_grad()
 
-        delta = {
-            name: torch.zeros_like(param.data)
-            for name, param in self.master_model.named_parameters()
-        }
+        delta = {name: torch.zeros_like(param.data) for name, param in self.master_model.named_parameters()}
         for local_model in self.models:
             for name, param in local_model.named_parameters():
                 delta[name] += param.data - self.master_model.state_dict()[name].data
@@ -306,9 +327,7 @@ class WashingMachine:
 
     def _drift_penalty(self, model, weight=0.01):
         penalty = 0.0
-        for (name, param), (_, ref_param) in zip(
-            model.named_parameters(), self.master_model.named_parameters()
-        ):
+        for (name, param), (_, ref_param) in zip(model.named_parameters(), self.master_model.named_parameters()):
             # Compute the L2 norm difference with the reference parameter
             penalty += torch.norm(param - ref_param) ** 2
         return weight * penalty
@@ -323,9 +342,7 @@ class WashingMachine:
             losses = []
             grad_norms = []
 
-            for model, optimizer, scheduler in zip(
-                self.models, self.optimizers, self.schedulers
-            ):
+            for model, optimizer, scheduler in zip(self.models, self.optimizers, self.schedulers):
                 x, y = next(self.data_iter)
                 x, y = x.to(self.device), y.to(self.device)
                 optimizer.zero_grad()
@@ -340,15 +357,7 @@ class WashingMachine:
 
                 losses.append(loss.item())
                 grad_norms.append(
-                    torch.norm(
-                        torch.cat(
-                            [
-                                p.grad.view(-1)
-                                for p in model.parameters()
-                                if p.grad != None
-                            ]
-                        )
-                    )
+                    torch.norm(torch.cat([p.grad.view(-1) for p in model.parameters() if p.grad != None]))
                 )
 
             return losses, grad_norms
@@ -373,10 +382,7 @@ class WashingMachine:
             except StopIteration:
                 break
 
-            if (
-                self.synchronize_interval
-                and self.local_step % self.synchronize_interval == 0
-            ):
+            if self.synchronize_interval and self.local_step % self.synchronize_interval == 0:
                 self._synchronize_models()
 
             if self.wash_interval and self.local_step % self.wash_interval == 0:
@@ -389,11 +395,7 @@ class WashingMachine:
             ):
                 self._eval_model()
 
-            if (
-                self.ckpt_interval
-                and self.local_step % self.ckpt_interval == 0
-                and self.local_step > 0
-            ):
+            if self.ckpt_interval and self.local_step % self.ckpt_interval == 0 and self.local_step > 0:
                 self._save_model()
 
             avg_loss = sum(losses) / len(losses)

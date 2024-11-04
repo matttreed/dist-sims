@@ -6,6 +6,7 @@ from data import TextDataset
 import numpy as np
 import argparse
 from util import arg_combinations, str2bool
+import random
 
 
 def CELoss(inputs, targets):
@@ -32,13 +33,8 @@ if __name__ == "__main__":
     parser.add_argument("--eval_interval", type=int, nargs="+", default=500)
     parser.add_argument("--eval_iters", type=int, nargs="+", default=100)
     parser.add_argument("--synchronize_interval", type=int, nargs="+", default=None)
-    parser.add_argument(
-        "--synchronize_method",
-        type=str,
-        choices=["diloco", "avg"],
-        nargs="+",
-        default="avg",
-    )
+    parser.add_argument("--synchronize_method", type=str, nargs="+", default="avg", choices=["avg", "diloco"])
+    parser.add_argument("--shuffle_type", type=str, choices=["ring", "random"], nargs="+", default="random")
     parser.add_argument("--vocab_size", type=int, nargs="+", default=50304)
     parser.add_argument("--block_size", type=int, nargs="+", default=512)
     parser.add_argument("--num_layers", type=int, nargs="+", default=12)
@@ -46,12 +42,18 @@ if __name__ == "__main__":
     parser.add_argument("--embed_size", type=int, nargs="+", default=512)
     parser.add_argument("--cosine_anneal", type=str2bool, nargs="+", default=False)
     parser.add_argument("--modulate_p_shuffle", type=str2bool, nargs="+", default=False)
+    parser.add_argument("--seed", type=int, nargs="+", default=None)
 
     base_args = parser.parse_args()
 
     for args in arg_combinations(base_args):
 
         print("Running with args:\n", args)
+
+        if args.seed:
+            torch.manual_seed(args.seed)
+            np.random.seed(args.seed)
+            random.seed(args.seed)
 
         gptconf = GPTConfig(
             block_size=args.block_size,
@@ -96,6 +98,7 @@ if __name__ == "__main__":
             eval_iters=args.eval_iters,
             cosine_anneal=args.cosine_anneal,
             ckpt_interval=args.ckpt_interval,
+            shuffle_type=args.shuffle_type,
         )
 
         if args.model_path:
