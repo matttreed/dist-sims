@@ -43,6 +43,9 @@ if __name__ == "__main__":
     parser.add_argument("--cosine_anneal", type=str2bool, nargs="+", default=False)
     parser.add_argument("--modulate_p_shuffle", type=str2bool, nargs="+", default=False)
     parser.add_argument("--seed", type=int, nargs="+", default=None)
+    parser.add_argument("--log_stats_interval", type=int, nargs="+", default=10)
+    parser.add_argument("--drift_penalty", type=float, nargs="+", default=None)
+    parser.add_argument("--device", type=str, nargs="+", default=None)
 
     base_args = parser.parse_args()
 
@@ -99,6 +102,9 @@ if __name__ == "__main__":
             cosine_anneal=args.cosine_anneal,
             ckpt_interval=args.ckpt_interval,
             shuffle_type=args.shuffle_type,
+            drift_penalty=args.drift_penalty,
+            log_stats_interval=args.log_stats_interval,
+            device=args.device,
         )
 
         if args.model_path:

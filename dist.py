@@ -12,6 +12,7 @@ from util import (
     mean_squared_difference,
     cosine_similarity,
     time_function,
+    drift_penalty,
 )
 import numpy as np
 
@@ -47,6 +48,8 @@ class WashingMachine:
         drift_penalty=None,
         max_local_step=None,
         cosine_anneal=False,
+        log_stats_interval=10,
+        device=None,
     ) -> None:
         super().__init__()
         self.model_cls = model_cls
@@ -77,8 +80,9 @@ class WashingMachine:
         self.local_step = 0
         self.max_local_step = max_local_step
         self.cosine_anneal = cosine_anneal
+        self.log_stats_interval = log_stats_interval
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if not device else device
 
         self.master_model = None
         self.master_optimizer = None
@@ -89,6 +93,9 @@ class WashingMachine:
         self.schedulers = []
         self._setup_master()
         self._setup_workers()
+
+        self.losses = []
+        self.grad_norms = []
 
         assert self.synchronize_method in [
             "avg",
@@ -216,7 +223,6 @@ class WashingMachine:
                         updated_param.view_as(model_params[model_idx][param_idx])
                     )
 
-    # @time_function
     def _shuffle_params(self):
         if self.p_shuffle == 0:
             return
@@ -263,6 +269,37 @@ class WashingMachine:
                 for model in self.models:
                     param += model.state_dict()[param_name] / self.num_workers
 
+    def _analyze_models(self):
+        param_correlation = parameter_correlation(self.models)
+        euclidean_dist = euclidean_distance(self.models)
+        print(f"Parameter Correlation: {param_correlation:.4f}")
+        print(f"Euclidean Distance: {euclidean_dist:.4f}")
+
+        if self.wandb_project:
+            wandb.log(
+                {
+                    "global_step": self.local_step * self.num_workers,
+                    "local_step": self.local_step,
+                    "correlation": param_correlation,
+                }
+            )
+
+    def _log_stats(self):
+        cum_grad_norm_var = np.var(self.grad_norms)
+        sliding_grad_norm_var = np.var(self.grad_norms[-100:])
+        if self.wandb_project:
+            wandb.log(
+                {
+                    "global_step": self.local_step * self.num_workers,
+                    "local_step": self.local_step,
+                    "lr": self.optimizers[0].param_groups[0]["lr"],
+                    "loss": random.choice(self.losses[-self.num_workers :]),
+                    "grad_norm": random.choice(self.grad_norms[-self.num_workers :]),
+                    "cum_grad_norm_var": cum_grad_norm_var,
+                    "sliding_grad_norm_var": sliding_grad_norm_var,
+                }
+            )
+
     def _eval_model(self):
         self._load_master_model()
         # self.master_model = deepcopy(self.models[0])
@@ -303,7 +340,6 @@ class WashingMachine:
         local_loss_std = np.std(local_losses)
         avg_ensemble_loss = sum(ensemble_losses) / len(ensemble_losses)
         ensemble_loss_std = np.std(ensemble_losses)
-        param_correlation = parameter_correlation(self.models)
 
         print(f"Avg Loss: {avg_master_loss:.4f}")
 
@@ -318,29 +354,17 @@ class WashingMachine:
                     "local_loss_std": local_loss_std,
                     "ensemble_loss": avg_ensemble_loss,
                     "ensemble_loss_std": ensemble_loss_std,
-                    "correlation": param_correlation,
                 }
             )
 
         for model in self.models:
             model.train()
 
-    def _drift_penalty(self, model, weight=0.01):
-        penalty = 0.0
-        for (name, param), (_, ref_param) in zip(model.named_parameters(), self.master_model.named_parameters()):
-            # Compute the L2 norm difference with the reference parameter
-            penalty += torch.norm(param - ref_param) ** 2
-        return weight * penalty
-
-    # @time_function
     def _train_step(self):
         if self.max_local_step and self.local_step >= self.max_local_step:
             raise StopIteration("End of Epoch")
 
         try:
-
-            losses = []
-            grad_norms = []
 
             for model, optimizer, scheduler in zip(self.models, self.optimizers, self.schedulers):
                 x, y = next(self.data_iter)
@@ -349,25 +373,22 @@ class WashingMachine:
                 output = model(x)
                 loss = self.loss_fn(output, y)
                 if self.synchronize_method == "diloco" and self.drift_penalty:
-                    loss += self._drift_penalty(model, self.drift_penalty)
+                    loss += drift_penalty(model, self.drift_penalty)
                 loss.backward()
                 optimizer.step()
                 if self.cosine_anneal:
                     scheduler.step()
 
-                losses.append(loss.item())
-                grad_norms.append(
+                self.losses.append(loss.item())
+                self.grad_norms.append(
                     torch.norm(torch.cat([p.grad.view(-1) for p in model.parameters() if p.grad != None]))
                 )
-
-            return losses, grad_norms
 
         except StopIteration:
             self.data_iter = iter(self.dataloader)
             raise StopIteration("End of Epoch")
 
-    # @time_function
-    def _train_epoch(self):
+    def _train_loop(self):
 
         total_iter = len(self.train_dataset) / (self.num_workers * self.batch_size)
 
@@ -378,9 +399,14 @@ class WashingMachine:
         while True:
 
             try:
-                losses, grad_norms = self._train_step()
+                self._train_step()
             except StopIteration:
                 break
+
+            loss = random.choice(self.losses[-self.num_workers :])
+
+            pbar.update(1)
+            pbar.set_postfix({"Loss": f"{loss:.4f}"})
 
             if self.synchronize_interval and self.local_step % self.synchronize_interval == 0:
                 self._synchronize_models()
@@ -388,37 +414,15 @@ class WashingMachine:
             if self.wash_interval and self.local_step % self.wash_interval == 0:
                 self._shuffle_params()
 
-            if (
-                self.eval_interval
-                # and self.eval_dataset
-                and self.local_step % self.eval_interval == 0
-            ):
+            if self.eval_interval and self.local_step % self.eval_interval == 0:
                 self._eval_model()
+                self._analyze_models()
 
             if self.ckpt_interval and self.local_step % self.ckpt_interval == 0 and self.local_step > 0:
                 self._save_model()
 
-            avg_loss = sum(losses) / len(losses)
-
-            pbar.update(1)
-            pbar.set_postfix({"Loss": f"{avg_loss:.4f}"})
-
-            if self.wandb_project and self.local_step % 10 == 0:
-                wandb.log(
-                    {
-                        "loss": random.choice(
-                            losses
-                        ),  # TODO using choice to show true variance (not scaled by sqrt(n))
-                        "global_step": self.local_step * self.num_workers,
-                        "local_step": self.local_step,
-                        "lr": self.optimizers[0].param_groups[0]["lr"],
-                        "grad_norm": random.choice(grad_norms),
-                        # "euclidean_distance": euclidean_distance(self.models),
-                        # "parameter_correlation": parameter_correlation(self.models),
-                        # "mean_squared_difference": mean_squared_difference(self.models),
-                        # "cosine_similarity": cosine_similarity(self.models),
-                    }
-                )
+            if self.wandb_project and self.local_step % self.log_stats_interval == 0:
+                self._log_stats()
 
             self.local_step += 1
 
@@ -428,9 +432,7 @@ class WashingMachine:
         for model in self.models:
             model.train()
 
-        self._train_epoch()
-
-        self._eval_model()
+        self._train_loop()
 
         self._save_model()
 

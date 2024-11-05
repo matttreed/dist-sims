@@ -21,14 +21,10 @@ def str2bool(v):
 def arg_combinations(args):
     # Identify arguments that are lists of values and should be iterated over
     args_dict = vars(args)
-    list_args = {
-        key: value for key, value in args_dict.items() if isinstance(value, list)
-    }
+    list_args = {key: value for key, value in args_dict.items() if isinstance(value, list)}
 
     # Identify static arguments (those with a single value)
-    static_args = {
-        key: value for key, value in args_dict.items() if key not in list_args
-    }
+    static_args = {key: value for key, value in args_dict.items() if key not in list_args}
 
     # Generate all combinations of list arguments
     keys, values = zip(*list_args.items())
@@ -83,9 +79,7 @@ def euclidean_distance(models):
     for model1, model2 in combinations(models, 2):
         layer_distances = []
 
-        for (name1, param1), (name2, param2) in zip(
-            model1.named_parameters(), model2.named_parameters()
-        ):
+        for (name1, param1), (name2, param2) in zip(model1.named_parameters(), model2.named_parameters()):
             if name1 != name2:
                 raise ValueError("Model layers do not match.")
             param1_flat = param1.view(-1)
@@ -127,6 +121,10 @@ def mean_squared_difference(models):
     return sum(differences) / len(differences)
 
 
+import torch
+from itertools import combinations
+
+
 def parameter_correlation(models):
     correlations = []
 
@@ -138,15 +136,27 @@ def parameter_correlation(models):
             param1_flat = param1.view(-1)
             param2_flat = param2.view(-1)
 
-            # Compute Pearson correlation
-            corr = torch.corrcoef(torch.stack([param1_flat, param2_flat]))[0, 1]
-            layer_correlations.append(corr.item())
+            # Check if the variance is zero to prevent NaN
+            if param1_flat.var() == 0 or param2_flat.var() == 0:
+                layer_correlations.append(1.0)  # Identical parameters have a correlation of 1
+            else:
+                # Compute Pearson correlation
+                corr = torch.corrcoef(torch.stack([param1_flat, param2_flat]))[0, 1]
+                layer_correlations.append(corr.item())
 
         # Average correlation for this pair of models across all layers
         correlations.append(sum(layer_correlations) / len(layer_correlations))
 
     # Return the average correlation across all model pairs
     return sum(correlations) / len(correlations)
+
+
+def drift_penalty(model, ref_model, weight=0.01):
+    penalty = 0.0
+    for (name, param), (_, ref_param) in zip(model.named_parameters(), ref_model.named_parameters()):
+        # Compute the L2 norm difference with the reference parameter
+        penalty += torch.norm(param - ref_param) ** 2
+    return weight * penalty
 
     # according to gradient magnitude
     # def _shuffle_params(self):
