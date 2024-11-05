@@ -287,6 +287,9 @@ class WashingMachine:
     def _log_stats(self):
         cum_grad_norm_var = np.var(self.grad_norms)
         sliding_grad_norm_var = np.var(self.grad_norms[-100:])
+        cum_loss_var = np.var(self.losses)
+        sliding_loss_var = np.var(self.losses[-100:])
+
         if self.wandb_project:
             wandb.log(
                 {
@@ -297,6 +300,8 @@ class WashingMachine:
                     "grad_norm": random.choice(self.grad_norms[-self.num_workers :]),
                     "cum_grad_norm_var": cum_grad_norm_var,
                     "sliding_grad_norm_var": sliding_grad_norm_var,
+                    "cum_loss_var": cum_loss_var,
+                    "sliding_loss_var": sliding_loss_var,
                 }
             )
 
