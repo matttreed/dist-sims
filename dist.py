@@ -381,7 +381,7 @@ class WashingMachine:
 
                 self.losses.append(loss.item())
                 self.grad_norms.append(
-                    torch.norm(torch.cat([p.grad.view(-1) for p in model.parameters() if p.grad != None]))
+                    torch.norm(torch.cat([p.grad.view(-1) for p in model.parameters() if p.grad != None])).item()
                 )
 
         except StopIteration:
