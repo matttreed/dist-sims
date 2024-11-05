@@ -126,6 +126,9 @@ from itertools import combinations
 
 
 def parameter_correlation(models):
+    if len(models) < 2:
+        return 1.0
+
     correlations = []
 
     # Compare each pair of models
