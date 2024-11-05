@@ -51,6 +51,9 @@ def time_function(func):
 
 
 def cosine_similarity(models):
+    if len(models) < 2:
+        return 1.0
+
     similarities = []
 
     # Compare each pair of models
@@ -73,6 +76,9 @@ def cosine_similarity(models):
 
 
 def euclidean_distance(models):
+    if len(models) < 2:
+        return 0.0
+
     distances = []
 
     # Compare each pair of models
@@ -100,6 +106,9 @@ def euclidean_distance(models):
 
 
 def mean_squared_difference(models):
+    if len(models) < 2:
+        return 0.0
+
     differences = []
 
     # Compare each pair of models
