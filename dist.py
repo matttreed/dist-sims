@@ -50,7 +50,6 @@ class WashingMachine:
         cosine_anneal=False,
         log_stats_interval=10,
         device=None,
-        target_correlation=None,
     ) -> None:
         super().__init__()
         self.model_cls = model_cls
@@ -82,7 +81,6 @@ class WashingMachine:
         self.max_local_step = max_local_step
         self.cosine_anneal = cosine_anneal
         self.log_stats_interval = log_stats_interval
-        self.target_correlation = target_correlation
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if not device else device
 
@@ -99,7 +97,7 @@ class WashingMachine:
         self.losses = []
         self.grad_norms = []
 
-        assert self.synchronize_method in ["avg", "diloco", "mod_p_shuffle"], "Invalid synchronization method"
+        assert self.synchronize_method in ["avg", "diloco"], "Invalid synchronization method"
 
         assert self.shuffle_type in ["random", "ring"], "Invalid shuffle type"
 
@@ -120,7 +118,6 @@ class WashingMachine:
             "eval_iters": self.eval_iters,
             "save_dir": self.save_dir,
             "model_kwargs": self.model_kwargs,
-            "target_correlation": self.target_correlation,
         }
 
         if self.wandb_project:
@@ -224,8 +221,6 @@ class WashingMachine:
                     )
 
     def _shuffle_params(self):
-        if self.p_shuffle == 0:
-            return
         if self.shuffle_type == "random":
             self._random_shuffle_params()
         elif self.shuffle_type == "ring":
@@ -261,14 +256,6 @@ class WashingMachine:
                 model.load_state_dict(self.master_model.state_dict())
         elif self.synchronize_method == "diloco":
             self._outer_step()
-        elif self.synchronize_method == "mod_p_shuffle":
-            correlation = parameter_correlation(self.models)
-            if correlation < self.target_correlation:
-                self.p_shuffle *= 1.1
-            else:
-                self.p_shuffle *= 0.9
-            self.p_shuffle = max(self.p_shuffle, 0.0001)
-            self.p_shuffle = min(self.p_shuffle, 0.1)
 
     def _load_master_model(self):
         with torch.no_grad():
@@ -425,7 +412,7 @@ class WashingMachine:
             if self.synchronize_interval and self.local_step % self.synchronize_interval == 0:
                 self._synchronize_models()
 
-            if self.wash_interval and self.local_step % self.wash_interval == 0:
+            if self.wash_interval and self.num_workers > 1 and self.local_step % self.wash_interval == 0:
                 self._shuffle_params()
 
             if self.eval_interval and self.local_step % self.eval_interval == 0:
