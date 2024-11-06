@@ -264,26 +264,30 @@ class WashingMachine:
                 for model in self.models:
                     param += model.state_dict()[param_name] / self.num_workers
 
-    def _analyze_models(self):
-        param_correlation = parameter_correlation(self.models)
-        euclidean_dist = euclidean_distance(self.models)
-        print(f"Parameter Correlation: {param_correlation:.4f}")
-        print(f"Euclidean Distance: {euclidean_dist:.4f}")
+    # def _analyze_models(self):
+    #     param_correlation = parameter_correlation(self.models)
+    #     euclidean_dist = euclidean_distance(self.models)
+    #     print(f"Parameter Correlation: {param_correlation:.4f}")
+    #     print(f"Euclidean Distance: {euclidean_dist:.4f}")
 
-        if self.wandb_project:
-            wandb.log(
-                {
-                    "global_step": self.local_step * self.num_workers,
-                    "local_step": self.local_step,
-                    "correlation": param_correlation,
-                }
-            )
+    #     if self.wandb_project:
+    #         wandb.log(
+    #             {
+    #                 "global_step": self.local_step * self.num_workers,
+    #                 "local_step": self.local_step,
+    #                 "correlation": param_correlation,
+    #             }
+    #         )
 
     def _log_stats(self):
         cum_grad_norm_var = np.var(self.grad_norms)
         sliding_grad_norm_var = np.var(self.grad_norms[-100:])
         cum_loss_var = np.var(self.losses)
         sliding_loss_var = np.var(self.losses[-100:])
+        param_correlation = parameter_correlation(self.models)
+        euclidean_dist = euclidean_distance(self.models)
+        # print(f"Parameter Correlation: {param_correlation:.4f}")
+        # print(f"Euclidean Distance: {euclidean_dist:.4f}")
 
         if self.wandb_project:
             wandb.log(
@@ -298,6 +302,8 @@ class WashingMachine:
                     "cum_loss_var": cum_loss_var,
                     "sliding_loss_var": sliding_loss_var,
                     "p_shuffle": self.p_shuffle,
+                    "param_correlation": param_correlation,
+                    "euclidean_dist": euclidean_dist,
                 }
             )
 
@@ -417,7 +423,6 @@ class WashingMachine:
 
             if self.eval_interval and self.local_step % self.eval_interval == 0:
                 self._eval_model()
-                self._analyze_models()
 
             if self.ckpt_interval and self.local_step % self.ckpt_interval == 0 and self.local_step > 0:
                 self._save_model()
@@ -436,7 +441,6 @@ class WashingMachine:
         self._train_loop()
 
         self._eval_model()
-        self._analyze_models()
 
         self._save_model()
 
