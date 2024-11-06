@@ -33,7 +33,9 @@ if __name__ == "__main__":
     parser.add_argument("--eval_interval", type=int, nargs="+", default=500)
     parser.add_argument("--eval_iters", type=int, nargs="+", default=100)
     parser.add_argument("--synchronize_interval", type=int, nargs="+", default=None)
-    parser.add_argument("--synchronize_method", type=str, nargs="+", default="avg", choices=["avg", "diloco"])
+    parser.add_argument(
+        "--synchronize_method", type=str, nargs="+", default="avg", choices=["avg", "diloco", "mod_p_shuffle"]
+    )
     parser.add_argument("--shuffle_type", type=str, choices=["ring", "random"], nargs="+", default="random")
     parser.add_argument("--vocab_size", type=int, nargs="+", default=50304)
     parser.add_argument("--block_size", type=int, nargs="+", default=512)
@@ -46,6 +48,7 @@ if __name__ == "__main__":
     parser.add_argument("--log_stats_interval", type=int, nargs="+", default=10)
     parser.add_argument("--drift_penalty", type=float, nargs="+", default=None)
     parser.add_argument("--device", type=str, nargs="+", default=None)
+    parser.add_argument("--target_correlation", type=float, nargs="+", default=None)
 
     base_args = parser.parse_args()
 
@@ -105,6 +108,7 @@ if __name__ == "__main__":
             drift_penalty=args.drift_penalty,
             log_stats_interval=args.log_stats_interval,
             device=args.device,
+            target_correlation=args.target_correlation,
         )
 
         if args.model_path:

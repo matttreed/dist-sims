@@ -50,6 +50,7 @@ class WashingMachine:
         cosine_anneal=False,
         log_stats_interval=10,
         device=None,
+        target_correlation=None,
     ) -> None:
         super().__init__()
         self.model_cls = model_cls
@@ -81,6 +82,7 @@ class WashingMachine:
         self.max_local_step = max_local_step
         self.cosine_anneal = cosine_anneal
         self.log_stats_interval = log_stats_interval
+        self.target_correlation = target_correlation
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if not device else device
 
@@ -97,10 +99,7 @@ class WashingMachine:
         self.losses = []
         self.grad_norms = []
 
-        assert self.synchronize_method in [
-            "avg",
-            "diloco",
-        ], "Invalid synchronization method"
+        assert self.synchronize_method in ["avg", "diloco", "mod_p_shuffle"], "Invalid synchronization method"
 
         assert self.shuffle_type in ["random", "ring"], "Invalid shuffle type"
 
@@ -261,6 +260,12 @@ class WashingMachine:
                 model.load_state_dict(self.master_model.state_dict())
         elif self.synchronize_method == "diloco":
             self._outer_step()
+        elif self.synchronize_method == "mod_p_shuffle":
+            correlation = parameter_correlation(self.models)
+            if correlation < self.target_correlation:
+                self.p_shuffle *= 1.1
+            else:
+                self.p_shuffle *= 0.9
 
     def _load_master_model(self):
         with torch.no_grad():
@@ -302,6 +307,7 @@ class WashingMachine:
                     "sliding_grad_norm_var": sliding_grad_norm_var,
                     "cum_loss_var": cum_loss_var,
                     "sliding_loss_var": sliding_loss_var,
+                    "p_shuffle": self.p_shuffle,
                 }
             )
 
