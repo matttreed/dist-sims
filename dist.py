@@ -435,6 +435,9 @@ class WashingMachine:
 
         self._train_loop()
 
+        self._eval_model()
+        self._analyze_models()
+
         self._save_model()
 
         if self.wandb_project:
