@@ -266,6 +266,8 @@ class WashingMachine:
                 self.p_shuffle *= 1.1
             else:
                 self.p_shuffle *= 0.9
+            self.p_shuffle = max(self.p_shuffle, 0.0001)
+            self.p_shuffle = min(self.p_shuffle, 0.1)
 
     def _load_master_model(self):
         with torch.no_grad():

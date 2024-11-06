@@ -17,12 +17,11 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--batch_size", type=int, nargs="+", default=32)
-    parser.add_argument("--num_workers", type=int, nargs="+", default=4)
-    parser.add_argument("--p_shuffle", type=float, nargs="+", default=0.01)
-    parser.add_argument("--learning_rate", type=float, nargs="+", default=0.001)
+    parser.add_argument("--batch_size", "-b", type=int, nargs="+", default=32)
+    parser.add_argument("--num_workers", "-w", type=int, nargs="+", default=4)
+    parser.add_argument("--p_shuffle", "-p", type=float, nargs="+", default=0.01)
+    parser.add_argument("--learning_rate", "-lr", type=float, nargs="+", default=0.001)
     parser.add_argument("--outer_learning_rate", type=float, nargs="+", default=0.7)
-    parser.add_argument("--num_epochs", type=int, nargs="+", default=1)
     parser.add_argument("--data_parallel", type=bool, nargs="+", default=True)
     parser.add_argument("--wash_interval", type=int, nargs="+", default=1)
     parser.add_argument("--max_local_step", type=int, nargs="+", default=5000)
