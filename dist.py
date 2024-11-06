@@ -120,6 +120,7 @@ class WashingMachine:
             "eval_iters": self.eval_iters,
             "save_dir": self.save_dir,
             "model_kwargs": self.model_kwargs,
+            "target_correlation": self.target_correlation,
         }
 
         if self.wandb_project:
