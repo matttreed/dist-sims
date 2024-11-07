@@ -380,7 +380,7 @@ class WashingMachine:
                 output = model(x)
                 loss = self.loss_fn(output, y)
                 if self.synchronize_method == "diloco" and self.drift_penalty:
-                    loss += drift_penalty(model, self.drift_penalty)
+                    loss += drift_penalty(model, self.master_model, self.drift_penalty)
                 loss.backward()
                 optimizer.step()
                 if self.cosine_anneal:
