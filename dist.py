@@ -50,6 +50,7 @@ class WashingMachine:
         cosine_anneal=False,
         log_stats_interval=10,
         device=None,
+        compile=False,
     ) -> None:
         super().__init__()
         self.model_cls = model_cls
@@ -81,6 +82,7 @@ class WashingMachine:
         self.max_local_step = max_local_step
         self.cosine_anneal = cosine_anneal
         self.log_stats_interval = log_stats_interval
+        self.compile = compile
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if not device else device
 
@@ -93,6 +95,10 @@ class WashingMachine:
         self.schedulers = []
         self._setup_master()
         self._setup_workers()
+        # self.parameter_correlation = parameter_correlation
+        # self.euclidean_distance = euclidean_distance
+        # self.mean_squared_difference = mean_squared_difference
+        # self.cosine_similarity = cosine_similarity
 
         self.losses = []
         self.grad_norms = []
@@ -124,6 +130,21 @@ class WashingMachine:
         if self.wandb_project:
             wandb.init(project=self.wandb_project, config=self.wandb_config)
             wandb.config.update(wandb_config)
+
+        if self.compile:
+            self.master_model = torch.compile(self.master_model)
+            for model in self.models:
+                model = torch.compile(model)
+
+            self.loss_fn = torch.compile(self.loss_fn)
+
+            # self.parameter_correlation = torch.compile(self.parameter_correlation)
+            # self.euclidean_distance = torch.compile(self.euclidean_distance)
+            # self.mean_squared_difference = torch.compile(self.mean_squared_difference)
+            # self.cosine_similarity = torch.compile(self.cosine_similarity)
+
+            self._compiled_random_shuffle_params = torch.compile(self._random_shuffle_params)
+            self._compiled_ring_shuffle_params = torch.compile(self._ring_shuffle_params)
 
     def _setup_master(self):
 
@@ -175,9 +196,10 @@ class WashingMachine:
 
                 p_shuffle = (
                     self.p_shuffle if not self.modulate_p_shuffle else self.p_shuffle * (1 - param_idx / (L - 1))
-                )
+                )  # TODO, shuffling is actually p_shuffle * (1 - 1/num_workers), might want to fix
 
                 params = torch.stack([param[param_idx].view(-1) for param in model_params])
+                # TODO, do this only once because expensive on GPU
                 size = params.shape[1]
                 permutation_tensor = torch.rand(size, self.num_workers).argsort(dim=1)
 
@@ -225,10 +247,21 @@ class WashingMachine:
                     )
 
     def _shuffle_params(self):
-        if self.shuffle_type == "random":
-            self._random_shuffle_params()
-        elif self.shuffle_type == "ring":
-            self._ring_shuffle_params()
+        # TODO make shuffling functions more efficient on GPU
+        # right now adds 30% overhead when shuffling every step on CPU
+        # adds about 1000% overhead when shuffling every step on GPU
+        if self.num_workers == 1:
+            return
+        if self.compile:
+            if self.shuffle_type == "random":
+                self._compiled_random_shuffle_params()
+            elif self.shuffle_type == "ring":
+                self._compiled_ring_shuffle_params()
+        else:
+            if self.shuffle_type == "random":
+                self._random_shuffle_params()
+            elif self.shuffle_type == "ring":
+                self._ring_shuffle_params()
 
     def _outer_step(self):
 
@@ -284,6 +317,9 @@ class WashingMachine:
     #         )
 
     def _log_stats(self):
+        if not self.wandb_project:
+            return
+
         cum_grad_norm_var = np.var(self.grad_norms)
         sliding_grad_norm_var = np.var(self.grad_norms[-100:])
         cum_loss_var = np.var(self.losses)
@@ -293,23 +329,22 @@ class WashingMachine:
         # print(f"Parameter Correlation: {param_correlation:.4f}")
         # print(f"Euclidean Distance: {euclidean_dist:.4f}")
 
-        if self.wandb_project:
-            wandb.log(
-                {
-                    "global_step": self.local_step * self.num_workers,
-                    "local_step": self.local_step,
-                    "lr": self.optimizers[0].param_groups[0]["lr"],
-                    "loss": random.choice(self.losses[-self.num_workers :]),
-                    "grad_norm": random.choice(self.grad_norms[-self.num_workers :]),
-                    "cum_grad_norm_var": cum_grad_norm_var,
-                    "sliding_grad_norm_var": sliding_grad_norm_var,
-                    "cum_loss_var": cum_loss_var,
-                    "sliding_loss_var": sliding_loss_var,
-                    "p_shuffle": self.p_shuffle,
-                    "param_correlation": param_correlation,
-                    "euclidean_dist": euclidean_dist,
-                }
-            )
+        wandb.log(
+            {
+                "global_step": self.local_step * self.num_workers,
+                "local_step": self.local_step,
+                "lr": self.optimizers[0].param_groups[0]["lr"],
+                "loss": random.choice(self.losses[-self.num_workers :]),
+                "grad_norm": random.choice(self.grad_norms[-self.num_workers :]),
+                "cum_grad_norm_var": cum_grad_norm_var,
+                "sliding_grad_norm_var": sliding_grad_norm_var,
+                "cum_loss_var": cum_loss_var,
+                "sliding_loss_var": sliding_loss_var,
+                "p_shuffle": self.p_shuffle,
+                "param_correlation": param_correlation,
+                "euclidean_dist": euclidean_dist,
+            }
+        )
 
     def _eval_model(self):
         self._load_master_model()
@@ -422,7 +457,7 @@ class WashingMachine:
             if self.synchronize_interval and self.local_step % self.synchronize_interval == 0:
                 self._synchronize_models()
 
-            if self.wash_interval and self.num_workers > 1 and self.local_step % self.wash_interval == 0:
+            if self.wash_interval and self.local_step % self.wash_interval == 0:
                 self._shuffle_params()
 
             if self.eval_interval and self.local_step % self.eval_interval == 0:
@@ -431,7 +466,7 @@ class WashingMachine:
             if self.ckpt_interval and self.local_step % self.ckpt_interval == 0 and self.local_step > 0:
                 self._save_model()
 
-            if self.wandb_project and self.local_step % self.log_stats_interval == 0:
+            if self.local_step % self.log_stats_interval == 0:
                 self._log_stats()
 
             self.local_step += 1
