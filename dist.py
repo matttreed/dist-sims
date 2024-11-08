@@ -111,6 +111,7 @@ class WashingMachine:
             "synchronize_interval": self.synchronize_interval,
             "p_shuffle": self.p_shuffle,
             "modulate_p_shuffle": self.modulate_p_shuffle,
+            "shuffle_type": self.shuffle_type,
             "drift_penalty": self.drift_penalty,
             "wash_interval": self.wash_interval,
             "cosine_anneal": self.cosine_anneal,
