@@ -1,8 +1,8 @@
 import torch
 import torch.random
-from distsims import WashingMachine
+from dist import WashingMachine
 from torch.utils.data import Dataset
-from examples.models import SimpleModel
+from models import SimpleModel
 import torch.nn.functional as F
 import random
 
@@ -38,17 +38,14 @@ if __name__ == "__main__":
         },
         optimizer_cls=torch.optim.AdamW,
         optimizer_kwargs={"lr": 0.01},
-        dataloader_kwargs={},
-        synchronize_method="wash",
         train_dataset=train_dataset,
-        eval_dataset=test_dataset,
         loss_fn=F.mse_loss,
-        num_workers=2,
-        num_epochs=1,
-        synchronize_interval=1,
+        num_workers=4,
+        wash_interval=1,
         p_shuffle=0.5,
         batch_size=16,
-        data_parallel=False,
+        max_local_step=2,
+        shuffle_type="ring",
     )
 
     wm.train()

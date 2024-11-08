@@ -206,7 +206,10 @@ class WashingMachine:
 
                 params = torch.stack([param[param_idx].view(-1) for param in model_params])
                 size = params.shape[1]
-                permutation_tensor = torch.rand(size, self.num_workers).argsort(dim=1)
+
+                permutation_tensor = torch.arange(self.num_workers).repeat(size, 1)
+                random_shifts = torch.randint(0, 2, (size,)) * 2 - 1
+                permutation_tensor = (permutation_tensor + random_shifts.view(-1, 1)) % self.num_workers
 
                 row_indices = permutation_tensor.T
                 column_indices = torch.arange(params.shape[1]).unsqueeze(0).expand(params.shape[0], -1)
