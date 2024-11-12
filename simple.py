@@ -40,12 +40,14 @@ if __name__ == "__main__":
         optimizer_kwargs={"lr": 0.01},
         train_dataset=train_dataset,
         loss_fn=F.mse_loss,
-        num_workers=4,
+        num_workers=10,
         wash_interval=1,
         p_shuffle=0.5,
         batch_size=16,
         max_local_step=2,
         shuffle_type="ring",
     )
-
-    wm.train()
+    for i in range(10):
+        wm._train_step()
+    wm._shuffle_params()
+    # wm.train()

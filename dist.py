@@ -186,82 +186,40 @@ class WashingMachine:
         for i, model in enumerate(self.models):
             torch.save(model.state_dict(), f"{self.save_dir}/model_{i}_{name}.pth")
 
-    def _random_shuffle_params(self):
+    def _shuffle_params(self):
+        if self.num_workers == 1 or self.p_shuffle == 0:
+            return
         with torch.no_grad():
             model_params = [list(model.parameters()) for model in self.models]
 
             L = len(model_params[0])
 
             for param_idx in range(L):
-
-                p_shuffle = (
-                    self.p_shuffle if not self.modulate_p_shuffle else self.p_shuffle * (1 - param_idx / (L - 1))
-                )  # TODO, shuffling is actually p_shuffle * (1 - 1/num_workers), might want to fix
-
-                params = torch.stack([param[param_idx].view(-1) for param in model_params])
-                # TODO, do this only once because expensive on GPU
-                size = params.shape[1]
-                permutation_tensor = torch.rand(size, self.num_workers).argsort(dim=1)
-
-                row_indices = permutation_tensor.T
-                column_indices = torch.arange(params.shape[1]).unsqueeze(0).expand(params.shape[0], -1)
-
-                masked_indices = torch.nonzero(torch.rand(size) < p_shuffle, as_tuple=True)[0]
-
-                params[:, masked_indices] = params[row_indices, column_indices][:, masked_indices]
-
-                for model_idx, updated_param in enumerate(params):
-                    model_params[model_idx][param_idx].data.copy_(
-                        updated_param.view_as(model_params[model_idx][param_idx])
-                    )
-
-    def _ring_shuffle_params(self):
-        with torch.no_grad():
-            model_params = [list(model.parameters()) for model in self.models]
-
-            L = len(model_params[0])
-
-            for param_idx in range(L):
-
                 p_shuffle = (
                     self.p_shuffle if not self.modulate_p_shuffle else self.p_shuffle * (1 - param_idx / (L - 1))
                 )
+                p_shuffle /= 1 - 1 / self.num_workers  # Account for poss of shuffling to self.
 
-                params = torch.stack([param[param_idx].view(-1) for param in model_params])
-                size = params.shape[1]
+                size = model_params[0][param_idx].numel()
+                masked_indices = torch.bernoulli(torch.full((size,), p_shuffle)).bool()
+                num_masked = masked_indices.sum()
 
-                permutation_tensor = torch.arange(self.num_workers).repeat(size, 1)
-                random_shifts = torch.randint(0, 2, (size,)) * 2 - 1
-                permutation_tensor = (permutation_tensor + random_shifts.view(-1, 1)) % self.num_workers
+                if self.shuffle_type == "random":
+                    permutation_tensor = torch.rand(num_masked, self.num_workers).argsort(dim=1)
+                elif self.shuffle_type == "ring":
+                    permutation_tensor = torch.arange(self.num_workers).repeat(num_masked, 1)
+                    random_shifts = torch.randint(0, 2, (num_masked,)) * 2 - 1
+                    permutation_tensor = (permutation_tensor + random_shifts.view(-1, 1)) % self.num_workers
 
                 row_indices = permutation_tensor.T
-                column_indices = torch.arange(params.shape[1]).unsqueeze(0).expand(params.shape[0], -1)
+                column_indices = torch.arange(num_masked).expand(self.num_workers, -1)
 
-                masked_indices = torch.nonzero(torch.rand(size) < p_shuffle, as_tuple=True)[0]
+                new_params = torch.stack([param[param_idx].view(-1)[masked_indices] for param in model_params])[
+                    row_indices, column_indices
+                ]
 
-                params[:, masked_indices] = params[row_indices, column_indices][:, masked_indices]
-
-                for model_idx, updated_param in enumerate(params):
-                    model_params[model_idx][param_idx].data.copy_(
-                        updated_param.view_as(model_params[model_idx][param_idx])
-                    )
-
-    def _shuffle_params(self):
-        # TODO make shuffling functions more efficient on GPU
-        # right now adds 30% overhead when shuffling every step on CPU
-        # adds about 1000% overhead when shuffling every step on GPU
-        if self.num_workers == 1:
-            return
-        if self.compile:
-            if self.shuffle_type == "random":
-                self._compiled_random_shuffle_params()
-            elif self.shuffle_type == "ring":
-                self._compiled_ring_shuffle_params()
-        else:
-            if self.shuffle_type == "random":
-                self._random_shuffle_params()
-            elif self.shuffle_type == "ring":
-                self._ring_shuffle_params()
+                for model_idx, updated_param in enumerate(new_params):
+                    model_params[model_idx][param_idx].view(-1).masked_scatter_(masked_indices, updated_param)
 
     def _outer_step(self):
 
