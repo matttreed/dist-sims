@@ -127,7 +127,9 @@ if __name__ == "__main__":
             for _ in range(5):
                 wm._train_step()
                 wm._shuffle_params()
-                print(".", end="")
+
+            if cuda_is_available:
+                torch.cuda.synchronize()
 
             print("Profiling shuffle_params")
             with profiler.profile(use_cuda=cuda_is_available) as prof:
