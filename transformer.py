@@ -5,8 +5,9 @@ from nanogpt import GPTConfig, GPT
 from data import TextDataset
 import numpy as np
 import argparse
-from util import arg_combinations, str2bool
+from util import arg_combinations, str2bool, generate_text
 import random
+import torch.autograd.profiler as profiler
 
 
 def CELoss(inputs, targets):
@@ -46,6 +47,9 @@ if __name__ == "__main__":
     parser.add_argument("--drift_penalty", type=float, nargs="+", default=None)
     parser.add_argument("--device", type=str, nargs="+", default=None)
     parser.add_argument("--compile", action="store_true")
+    parser.add_argument("--profile", action="store_true")
+    parser.add_argument("--train", action="store_true")
+    parser.add_argument("--generate", action="store_true")
 
     base_args = parser.parse_args()
 
@@ -111,4 +115,27 @@ if __name__ == "__main__":
         if args.model_path:
             wm.load_model(args.model_path)
 
-        wm.train()
+        if args.train:
+            wm.train()
+        elif args.generate:
+            generate_text(wm.master_model)
+        elif args.profile:
+
+            cuda_is_available = torch.cuda.is_available()
+
+            print("Warmup")
+            for _ in range(5):
+                wm._train_step()
+                wm._shuffle_params()
+                print(".", end="")
+
+            print("Profiling shuffle_params")
+            with profiler.profile(use_cuda=cuda_is_available) as prof:
+                wm._shuffle_params()
+
+            if cuda_is_available:
+                torch.cuda.synchronize()
+
+            sort_by = "cuda_time_total" if cuda_is_available else "cpu_time_total"
+
+            print(prof.key_averages().table(sort_by=sort_by, row_limit=50))

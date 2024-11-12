@@ -5,6 +5,7 @@ import time
 import argparse
 import itertools
 import copy
+from transformers import AutoTokenizer
 
 
 def str2bool(v):
@@ -25,6 +26,10 @@ def arg_combinations(args):
 
     # Identify static arguments (those with a single value)
     static_args = {key: value for key, value in args_dict.items() if key not in list_args}
+
+    if not list_args:
+        yield argparse.Namespace(**static_args)
+        return
 
     # Generate all combinations of list arguments
     keys, values = zip(*list_args.items())
@@ -169,6 +174,24 @@ def drift_penalty(model, ref_model, weight=0.01):
         # Compute the L2 norm difference with the reference parameter
         penalty += torch.norm(param - ref_param) ** 2
     return weight * penalty
+
+
+def generate_text(model):
+    tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    while True:
+        user_input = input("Enter the start of your text (or 'quit' to exit): ")
+        if user_input.lower() == "quit":
+            break
+
+        generated_ids = model.generate(
+            torch.tensor(tokenizer.encode(user_input)).unsqueeze(0),
+            max_new_tokens=500,
+            temperature=0.7,
+            top_k=None,
+        )
+
+        generated_text = tokenizer.decode(generated_ids.squeeze())
+        print(f"Generated Text: {generated_text}")
 
     # according to gradient magnitude
     # def _shuffle_params(self):
