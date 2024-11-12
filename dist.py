@@ -201,18 +201,18 @@ class WashingMachine:
                 p_shuffle /= 1 - 1 / self.num_workers  # Account for poss of shuffling to self.
 
                 size = model_params[0][param_idx].numel()
-                masked_indices = torch.bernoulli(torch.full((size,), p_shuffle)).bool()
+                masked_indices = torch.bernoulli(torch.full((size,), p_shuffle, device=self.device)).bool()
                 num_masked = masked_indices.sum()
 
                 if self.shuffle_type == "random":
-                    permutation_tensor = torch.rand(num_masked, self.num_workers).argsort(dim=1)
+                    permutation_tensor = torch.rand(num_masked, self.num_workers, device=self.device).argsort(dim=1)
                 elif self.shuffle_type == "ring":
-                    permutation_tensor = torch.arange(self.num_workers).repeat(num_masked, 1)
-                    random_shifts = torch.randint(0, 2, (num_masked,)) * 2 - 1
+                    permutation_tensor = torch.arange(self.num_workers, device=self.device).repeat(num_masked, 1)
+                    random_shifts = torch.randint(0, 2, (num_masked,), device=self.device) * 2 - 1
                     permutation_tensor = (permutation_tensor + random_shifts.view(-1, 1)) % self.num_workers
 
                 row_indices = permutation_tensor.T
-                column_indices = torch.arange(num_masked).expand(self.num_workers, -1)
+                column_indices = torch.arange(num_masked, device=self.device).expand(self.num_workers, -1)
 
                 new_params = torch.stack([param[param_idx].view(-1)[masked_indices] for param in model_params])[
                     row_indices, column_indices
