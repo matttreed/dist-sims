@@ -34,7 +34,8 @@ if __name__ == "__main__":
     parser.add_argument("--eval_iters", type=int, nargs="+", default=100)
     parser.add_argument("--synchronize_interval", type=int, nargs="+", default=None)
     parser.add_argument("--synchronize_method", type=str, nargs="+", default="avg", choices=["avg", "diloco"])
-    parser.add_argument("--shuffle_type", type=str, choices=["ring", "random"], nargs="+", default="random")
+    parser.add_argument("--shuffle_type", type=str, choices=["shuffle", "avg"], nargs="+", default="shuffle")
+    parser.add_argument("--topology_type", type=str, choices=["ring", "full"], nargs="+", default="full")
     parser.add_argument("--vocab_size", type=int, nargs="+", default=50304)
     parser.add_argument("--block_size", type=int, nargs="+", default=512)
     parser.add_argument("--num_layers", type=int, nargs="+", default=12)
@@ -106,11 +107,14 @@ if __name__ == "__main__":
             cosine_anneal=args.cosine_anneal,
             ckpt_interval=args.ckpt_interval,
             shuffle_type=args.shuffle_type,
+            topology_type=args.topology_type,
             drift_penalty=args.drift_penalty,
             log_stats_interval=args.log_stats_interval,
             device=args.device,
             compile=args.compile,
         )
+
+        assert args.train ^ args.generate ^ args.profile, "Must specify exactly one of train, generate, profile"
 
         if args.model_path:
             wm.load_model(args.model_path)
@@ -134,6 +138,7 @@ if __name__ == "__main__":
             print("Profiling shuffle_params")
             with profiler.profile(use_cuda=cuda_is_available) as prof:
                 wm._shuffle_params()
+                # wm._train_step()
 
             if cuda_is_available:
                 torch.cuda.synchronize()

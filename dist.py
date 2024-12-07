@@ -36,7 +36,8 @@ class WashingMachine:
         eval_interval=None,
         eval_iters=50,
         p_shuffle=0.01,
-        shuffle_type="random",
+        shuffle_type="shuffle",
+        topology_type="full",
         batch_size=16,
         modulate_p_shuffle=False,  # Modules must be defined in order of depth
         save_dir=None,
@@ -71,6 +72,7 @@ class WashingMachine:
         self.eval_iters = eval_iters
         self.p_shuffle = p_shuffle
         self.shuffle_type = shuffle_type
+        self.topology_type = topology_type
         self.batch_size = batch_size
         self.modulate_p_shuffle = modulate_p_shuffle
         self.save_dir = save_dir
@@ -105,7 +107,9 @@ class WashingMachine:
 
         assert self.synchronize_method in ["avg", "diloco"], "Invalid synchronization method"
 
-        assert self.shuffle_type in ["random", "ring"], "Invalid shuffle type"
+        assert self.topology_type in ["full", "ring"], "Invalid topology type"
+
+        assert self.shuffle_type in ["shuffle", "avg"], "Invalid shuffle type"
 
         wandb_config = {
             # "num_epochs": self.num_epochs,
@@ -204,9 +208,9 @@ class WashingMachine:
                 masked_indices = torch.bernoulli(torch.full((size,), p_shuffle, device=self.device)).bool()
                 num_masked = masked_indices.sum()
 
-                if self.shuffle_type == "random":
+                if self.topology_type == "full":
                     permutation_tensor = torch.rand(num_masked, self.num_workers, device=self.device).argsort(dim=1)
-                elif self.shuffle_type == "ring":
+                elif self.topology_type == "ring":
                     permutation_tensor = torch.arange(self.num_workers, device=self.device).repeat(num_masked, 1)
                     random_shifts = torch.randint(0, 2, (num_masked,), device=self.device) * 2 - 1
                     permutation_tensor = (permutation_tensor + random_shifts.view(-1, 1)) % self.num_workers
@@ -218,8 +222,60 @@ class WashingMachine:
                     row_indices, column_indices
                 ]
 
-                for model_idx, updated_param in enumerate(new_params):
+                for model_idx in range(self.num_workers):
+                    updated_param = new_params[model_idx]
                     model_params[model_idx][param_idx].view(-1).masked_scatter_(masked_indices, updated_param)
+
+    def _avg_params(self):
+        if self.num_workers == 1 or self.p_shuffle == 0:
+            return
+        with torch.no_grad():
+            model_params = [list(model.parameters()) for model in self.models]
+
+            L = len(model_params[0])
+
+            for param_idx in range(L):
+                p_shuffle = (
+                    self.p_shuffle if not self.modulate_p_shuffle else self.p_shuffle * (1 - param_idx / (L - 1))
+                )
+                p_shuffle /= 1 - 1 / self.num_workers  # Account for poss of shuffling to self.
+
+                size = model_params[0][param_idx].numel()
+                masked_indices = torch.bernoulli(torch.full((size,), p_shuffle, device=self.device)).bool()
+                num_masked = masked_indices.sum()
+
+                if self.topology_type == "full":
+                    new_params = torch.stack(
+                        [param[param_idx].view(-1)[masked_indices] for param in model_params]
+                    ).mean(dim=0)
+                    for model_idx in range(self.num_workers):
+                        model_params[model_idx][param_idx].view(-1).masked_scatter_(masked_indices, new_params)
+                elif self.topology_type == "ring":
+                    new_params_list = []  # To hold the new averaged parameters for each model
+
+                    for model_idx in range(self.num_workers):
+                        # Get indices of neighbors in the ring
+                        left_neighbor_idx = (model_idx - 1) % self.num_workers  # Wrap around to the last model
+                        right_neighbor_idx = (model_idx + 1) % self.num_workers  # Wrap around to the first model
+
+                        # Stack the parameters of the current model and its neighbors
+                        neighbor_params = torch.stack(
+                            [
+                                model_params[left_neighbor_idx][param_idx].view(-1)[masked_indices],
+                                model_params[model_idx][param_idx].view(-1)[masked_indices],
+                                model_params[right_neighbor_idx][param_idx].view(-1)[masked_indices],
+                            ]
+                        )
+
+                        # Compute the average for the current model
+                        new_params = neighbor_params.mean(dim=0)
+                        new_params_list.append(new_params)
+
+                    # Update each model's parameters with the computed averages
+                    for model_idx in range(self.num_workers):
+                        model_params[model_idx][param_idx].view(-1).masked_scatter_(
+                            masked_indices, new_params_list[model_idx]
+                        )
 
     def _outer_step(self):
 
@@ -416,7 +472,10 @@ class WashingMachine:
                 self._synchronize_models()
 
             if self.wash_interval and self.local_step % self.wash_interval == 0:
-                self._shuffle_params()
+                if self.shuffle_type == "shuffle":
+                    self._shuffle_params()
+                else:
+                    self._avg_params()
 
             if self.eval_interval and self.local_step % self.eval_interval == 0:
                 self._eval_model()
