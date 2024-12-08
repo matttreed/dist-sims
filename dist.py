@@ -271,11 +271,14 @@ class WashingMachine:
                         # Compute the average for the current model
                         new_params[model_idx] = neighbor_params.mean(dim=0)
 
+                lr = self.optimizer_kwargs.get("lr", 1)
+
                 # Compute pseudo gradients for each model
                 pseudo_gradients = torch.stack(
                     [
                         (model_params[model_idx][param_idx].view(-1)[masked_indices] - new_params[model_idx])
                         * self.p_shuffle
+                        / lr
                         for model_idx in range(self.num_workers)
                     ]
                 )
