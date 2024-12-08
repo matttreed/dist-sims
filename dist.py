@@ -284,12 +284,12 @@ class WashingMachine:
                 )
 
                 # update models
-                # for model_idx in range(self.num_workers):
-                #     model_params[model_idx][param_idx].view(-1).masked_scatter_(masked_indices, new_params[model_idx])
-                #     if model_params[model_idx][param_idx].grad is not None:
-                #         model_params[model_idx][param_idx].grad.view(-1).masked_scatter_(
-                #             masked_indices, pseudo_gradients[model_idx]
-                #         )
+                for model_idx in range(self.num_workers):
+                    model_params[model_idx][param_idx].view(-1).masked_scatter_(masked_indices, new_params[model_idx])
+                    if model_params[model_idx][param_idx].grad is not None:
+                        model_params[model_idx][param_idx].grad.view(-1).masked_scatter_(
+                            masked_indices, pseudo_gradients[model_idx]
+                        )
 
                 # beta1, _ = self.optimizers[0].defaults.get("betas", None)  # TODO make work for param groups
 
