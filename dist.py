@@ -245,13 +245,14 @@ class WashingMachine:
                 num_masked = masked_indices.sum()
 
                 if self.topology_type == "full":
-                    new_params = torch.stack(
-                        [param[param_idx].view(-1)[masked_indices] for param in model_params]
-                    ).mean(dim=0)
-                    for model_idx in range(self.num_workers):
-                        model_params[model_idx][param_idx].view(-1).masked_scatter_(masked_indices, new_params)
+                    new_params = (
+                        torch.stack([param[param_idx].view(-1)[masked_indices] for param in model_params])
+                        .mean(dim=0)
+                        .unsqueeze(0)
+                        .repeat(self.num_workers, 1)
+                    )
                 elif self.topology_type == "ring":
-                    new_params_list = []  # To hold the new averaged parameters for each model
+                    new_params = torch.zeros(self.num_workers, num_masked, device=self.device)
 
                     for model_idx in range(self.num_workers):
                         # Get indices of neighbors in the ring
@@ -268,14 +269,28 @@ class WashingMachine:
                         )
 
                         # Compute the average for the current model
-                        new_params = neighbor_params.mean(dim=0)
-                        new_params_list.append(new_params)
+                        new_params[model_idx] = neighbor_params.mean(dim=0)
 
-                    # Update each model's parameters with the computed averages
-                    for model_idx in range(self.num_workers):
-                        model_params[model_idx][param_idx].view(-1).masked_scatter_(
-                            masked_indices, new_params_list[model_idx]
-                        )
+                # Compute pseudo gradients for each model
+                pseudo_gradients = torch.stack(
+                    [
+                        model_params[model_idx][param_idx].view(-1)[masked_indices] - new_params[model_idx]
+                        for model_idx in range(self.num_workers)
+                    ]
+                )
+
+                # update models
+                for model_idx in range(self.num_workers):
+                    model_params[model_idx][param_idx].view(-1).masked_scatter_(masked_indices, new_params[model_idx])
+
+                beta1, _ = self.optimizers[0].defaults.get("betas", None)  # TODO make work for param groups
+
+                # update optimizers
+                for model_idx in range(self.num_workers):
+                    state = self.optimizers[model_idx].state[model_params[model_idx][param_idx]]
+                    momentum = state["exp_avg"].view(-1)
+                    momentum[masked_indices] = momentum[masked_indices] * beta1
+                    +pseudo_gradients[model_idx] * self.p_shuffle * (1 - beta1)
 
     def _outer_step(self):
 
