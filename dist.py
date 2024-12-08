@@ -274,7 +274,8 @@ class WashingMachine:
                 # Compute pseudo gradients for each model
                 pseudo_gradients = torch.stack(
                     [
-                        new_params[model_idx] - model_params[model_idx][param_idx].view(-1)[masked_indices]
+                        (model_params[model_idx][param_idx].view(-1)[masked_indices] - new_params[model_idx])
+                        * self.p_shuffle
                         for model_idx in range(self.num_workers)
                     ]
                 )
@@ -282,16 +283,20 @@ class WashingMachine:
                 # update models
                 for model_idx in range(self.num_workers):
                     model_params[model_idx][param_idx].view(-1).masked_scatter_(masked_indices, new_params[model_idx])
+                    if model_params[model_idx][param_idx].grad is not None:
+                        model_params[model_idx][param_idx].grad.view(-1).masked_scatter_(
+                            masked_indices, pseudo_gradients[model_idx]
+                        )
 
-                beta1, _ = self.optimizers[0].defaults.get("betas", None)  # TODO make work for param groups
+                # beta1, _ = self.optimizers[0].defaults.get("betas", None)  # TODO make work for param groups
 
-                # update optimizers
-                for model_idx in range(self.num_workers):
-                    state = self.optimizers[model_idx].state[model_params[model_idx][param_idx]]
-                    momentum = state["exp_avg"].view(-1)
-                    momentum[masked_indices] = momentum[masked_indices] * beta1 + pseudo_gradients[
-                        model_idx
-                    ] * self.p_shuffle * (1 - beta1)
+                # # update optimizers
+                # for model_idx in range(self.num_workers):
+                #     state = self.optimizers[model_idx].state[model_params[model_idx][param_idx]]
+                #     momentum = state["exp_avg"].view(-1)
+                #     momentum[masked_indices] = momentum[masked_indices] * beta1 + pseudo_gradients[
+                #         model_idx
+                #     ] * self.p_shuffle * (1 - beta1)
 
     def _outer_step(self):
 
@@ -451,6 +456,7 @@ class WashingMachine:
                 if self.synchronize_method == "diloco" and self.drift_penalty:
                     loss += drift_penalty(model, self.master_model, self.drift_penalty)
                 loss.backward()
+                self._avg_params()
                 optimizer.step()
                 if self.cosine_anneal:
                     scheduler.step()
@@ -487,11 +493,11 @@ class WashingMachine:
             if self.synchronize_interval and self.local_step % self.synchronize_interval == 0:
                 self._synchronize_models()
 
-            if self.wash_interval and self.local_step % self.wash_interval == 0:
-                if self.shuffle_type == "shuffle":
-                    self._shuffle_params()
-                else:
-                    self._avg_params()
+            # if self.wash_interval and self.local_step % self.wash_interval == 0:
+            #     if self.shuffle_type == "shuffle":
+            #         self._shuffle_params()
+            #     else:
+            #         self._avg_params()
 
             if self.eval_interval and self.local_step % self.eval_interval == 0:
                 self._eval_model()
