@@ -241,3 +241,29 @@ def generate_text(model):
     #             for model_idx, updated_param in enumerate(params):
     #                 model_params[model_idx][param_idx].data.copy_(
     #                     updated_param.view_as(model_params[model_idx][param_idx])
+
+
+import subprocess
+
+
+def get_latest_commit():
+    try:
+        # Run the git command to get the latest commit hash
+        commit_hash = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.STDOUT)
+        return commit_hash.strip().decode("utf-8")
+    except subprocess.CalledProcessError as e:
+        print("Error while retrieving the latest commit:", e.output.decode("utf-8"))
+        return None
+
+
+def get_latest_commit_and_message():
+    try:
+        # Run the git command to get the latest commit hash and message
+        result = subprocess.check_output(
+            ["git", "log", "-1", "--pretty=format:%H%n%s"], stderr=subprocess.STDOUT
+        ).decode("utf-8")
+        commit_hash, commit_message = result.split("\n")
+        return commit_hash.strip(), commit_message.strip()
+    except subprocess.CalledProcessError as e:
+        print("Error while retrieving the latest commit:", e.output.decode("utf-8"))
+        return None, None

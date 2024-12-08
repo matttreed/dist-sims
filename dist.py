@@ -13,6 +13,7 @@ from util import (
     cosine_similarity,
     time_function,
     drift_penalty,
+    get_latest_commit_and_message,
 )
 import numpy as np
 
@@ -111,6 +112,11 @@ class WashingMachine:
 
         assert self.shuffle_type in ["shuffle", "avg"], "Invalid shuffle type"
 
+        commit_hash, commit_message = get_latest_commit_and_message()
+
+        print(f"Commit Hash: {commit_hash}")
+        print(f"Commit Message: {commit_message}")
+
         wandb_config = {
             # "num_epochs": self.num_epochs,
             "batch_size": self.batch_size,
@@ -129,6 +135,8 @@ class WashingMachine:
             "eval_iters": self.eval_iters,
             "save_dir": self.save_dir,
             "model_kwargs": self.model_kwargs,
+            "commit_hash": commit_hash,
+            "commit_message": commit_message,
         }
 
         if self.wandb_project:
@@ -274,22 +282,22 @@ class WashingMachine:
                 lr = self.optimizer_kwargs.get("lr", 1)
 
                 # Compute pseudo gradients for each model
-                pseudo_gradients = torch.stack(
-                    [
-                        (model_params[model_idx][param_idx].view(-1)[masked_indices] - new_params[model_idx])
-                        * self.p_shuffle
-                        / lr
-                        for model_idx in range(self.num_workers)
-                    ]
-                )
+                # pseudo_gradients = torch.stack(
+                #     [
+                #         (model_params[model_idx][param_idx].view(-1)[masked_indices] - new_params[model_idx])
+                #         * self.p_shuffle
+                #         / lr
+                #         for model_idx in range(self.num_workers)
+                #     ]
+                # )
 
                 # update models
                 for model_idx in range(self.num_workers):
                     model_params[model_idx][param_idx].view(-1).masked_scatter_(masked_indices, new_params[model_idx])
-                    if model_params[model_idx][param_idx].grad is not None:
-                        model_params[model_idx][param_idx].grad.view(-1).masked_scatter_(
-                            masked_indices, pseudo_gradients[model_idx]
-                        )
+                    # if model_params[model_idx][param_idx].grad is not None:
+                    #     model_params[model_idx][param_idx].grad.view(-1).masked_scatter_(
+                    #         masked_indices, pseudo_gradients[model_idx]
+                    #     )
 
                 # beta1, _ = self.optimizers[0].defaults.get("betas", None)  # TODO make work for param groups
 
@@ -459,7 +467,6 @@ class WashingMachine:
                 if self.synchronize_method == "diloco" and self.drift_penalty:
                     loss += drift_penalty(model, self.master_model, self.drift_penalty)
                 loss.backward()
-                self._avg_params()
                 optimizer.step()
                 if self.cosine_anneal:
                     scheduler.step()
@@ -496,11 +503,11 @@ class WashingMachine:
             if self.synchronize_interval and self.local_step % self.synchronize_interval == 0:
                 self._synchronize_models()
 
-            # if self.wash_interval and self.local_step % self.wash_interval == 0:
-            #     if self.shuffle_type == "shuffle":
-            #         self._shuffle_params()
-            #     else:
-            #         self._avg_params()
+            if self.wash_interval and self.local_step % self.wash_interval == 0:
+                if self.shuffle_type == "shuffle":
+                    self._shuffle_params()
+                else:
+                    self._avg_params()
 
             if self.eval_interval and self.local_step % self.eval_interval == 0:
                 self._eval_model()
