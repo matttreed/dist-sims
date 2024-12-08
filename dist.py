@@ -274,7 +274,7 @@ class WashingMachine:
                 # Compute pseudo gradients for each model
                 pseudo_gradients = torch.stack(
                     [
-                        model_params[model_idx][param_idx].view(-1)[masked_indices] - new_params[model_idx]
+                        new_params[model_idx] - model_params[model_idx][param_idx].view(-1)[masked_indices]
                         for model_idx in range(self.num_workers)
                     ]
                 )
@@ -289,8 +289,9 @@ class WashingMachine:
                 for model_idx in range(self.num_workers):
                     state = self.optimizers[model_idx].state[model_params[model_idx][param_idx]]
                     momentum = state["exp_avg"].view(-1)
-                    momentum[masked_indices] = momentum[masked_indices] * beta1
-                    +pseudo_gradients[model_idx] * self.p_shuffle * (1 - beta1)
+                    momentum[masked_indices] = momentum[masked_indices] * beta1 + pseudo_gradients[
+                        model_idx
+                    ] * self.p_shuffle * (1 - beta1)
 
     def _outer_step(self):
 
