@@ -51,6 +51,7 @@ class WashingMachine:
         max_local_step=None,
         cosine_anneal=False,
         log_stats_interval=10,
+        async_lag=0,
         device=None,
         compile=False,
     ) -> None:
@@ -85,6 +86,8 @@ class WashingMachine:
         self.max_local_step = max_local_step
         self.cosine_anneal = cosine_anneal
         self.log_stats_interval = log_stats_interval
+        self.async_lag = async_lag
+        self.async_queue = []
         self.compile = compile
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if not device else device
@@ -290,10 +293,14 @@ class WashingMachine:
                 #         for model_idx in range(self.num_workers)
                 #     ]
                 # )
+                self.async_queue.append((new_params, masked_indices))
 
-                # update models
-                for model_idx in range(self.num_workers):
-                    model_params[model_idx][param_idx].view(-1).masked_scatter_(masked_indices, new_params[model_idx])
+                if len(self.async_queue) > self.async_lag:
+                    new_params, masked_indices = self.async_queue.pop(0)
+                    for model_idx in range(self.num_workers):
+                        model_params[model_idx][param_idx].view(-1).masked_scatter_(
+                            masked_indices, new_params[model_idx]
+                        )
                     # if model_params[model_idx][param_idx].grad is not None:
                     #     model_params[model_idx][param_idx].grad.view(-1).masked_scatter_(
                     #         masked_indices, pseudo_gradients[model_idx]
@@ -370,8 +377,8 @@ class WashingMachine:
         sliding_grad_norm_var = np.var(self.grad_norms[-100:])
         cum_loss_var = np.var(self.losses)
         sliding_loss_var = np.var(self.losses[-100:])
-        param_correlation = parameter_correlation(self.models)
-        euclidean_dist = euclidean_distance(self.models)
+        # param_correlation = parameter_correlation(self.models)
+        # euclidean_dist = euclidean_distance(self.models)
         # print(f"Parameter Correlation: {param_correlation:.4f}")
         # print(f"Euclidean Distance: {euclidean_dist:.4f}")
 
@@ -387,8 +394,8 @@ class WashingMachine:
                 "cum_loss_var": cum_loss_var,
                 "sliding_loss_var": sliding_loss_var,
                 "p_shuffle": self.p_shuffle,
-                "param_correlation": param_correlation,
-                "euclidean_dist": euclidean_dist,
+                # "param_correlation": param_correlation,
+                # "euclidean_dist": euclidean_dist,
             }
         )
 

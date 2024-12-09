@@ -32,6 +32,7 @@ if __name__ == "__main__":
     parser.add_argument("--wandb_project", type=str, nargs="+", default=None)
     parser.add_argument("--eval_interval", type=int, nargs="+", default=500)
     parser.add_argument("--eval_iters", type=int, nargs="+", default=100)
+    parser.add_argument("--async_lag", type=int, nargs="+", default=0)
     parser.add_argument("--synchronize_interval", type=int, nargs="+", default=None)
     parser.add_argument("--synchronize_method", type=str, nargs="+", default="avg", choices=["avg", "diloco"])
     parser.add_argument("--shuffle_type", type=str, choices=["shuffle", "avg"], nargs="+", default="shuffle")
@@ -110,6 +111,7 @@ if __name__ == "__main__":
             topology_type=args.topology_type,
             drift_penalty=args.drift_penalty,
             log_stats_interval=args.log_stats_interval,
+            async_lag=args.async_lag,
             device=args.device,
             compile=args.compile,
         )
