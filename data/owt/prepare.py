@@ -20,9 +20,7 @@ def tokenize_dataset_with_eot(dataset, tokenizer, eot_token_id):
         tokenized["input_ids"].append(eot_token_id)
         return tokenized
 
-    tokenized_dataset = dataset.map(
-        tokenize_function, batched=False, num_proc=cpu_count()
-    )
+    tokenized_dataset = dataset.map(tokenize_function, batched=False, num_proc=cpu_count())
     return tokenized_dataset
 
 
@@ -30,9 +28,7 @@ def tokenize_dataset_with_eot(dataset, tokenizer, eot_token_id):
 def save_tokenized_to_bin(tokenized_dataset, output_file):
     # Use tqdm to display progress while iterating over the dataset
     with open(output_file, "wb") as f:
-        for entry in tqdm(
-            tokenized_dataset, desc="Saving to .bin file", unit="entries"
-        ):
+        for entry in tqdm(tokenized_dataset, desc="Saving to .bin file", unit="entries"):
             input_ids = entry["input_ids"]
             # Convert to NumPy array and save in binary format
             input_ids_np = np.array(input_ids, dtype=np.uint16)
@@ -53,7 +49,7 @@ def main():
     tokenized_dataset = tokenize_dataset_with_eot(dataset, tokenizer, eot_token_id)
 
     print("Step 3: Saving the tokenized dataset to a .bin file...")
-    output_file = "openwebtext_2.bin"
+    output_file = "openwebtext.bin"
     save_tokenized_to_bin(tokenized_dataset, output_file)
     print(f"Tokenized dataset with EOT saved to {output_file}")
 
