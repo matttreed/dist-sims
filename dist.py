@@ -140,6 +140,8 @@ class WashingMachine:
             "model_kwargs": self.model_kwargs,
             "commit_hash": commit_hash,
             "commit_message": commit_message,
+            "topology_type": self.topology_type,
+            "async_lag": self.async_lag,
         }
 
         if self.wandb_project:
