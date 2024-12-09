@@ -87,7 +87,6 @@ class WashingMachine:
         self.cosine_anneal = cosine_anneal
         self.log_stats_interval = log_stats_interval
         self.async_lag = async_lag
-        self.async_queue = []
         self.compile = compile
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if not device else device
@@ -101,6 +100,7 @@ class WashingMachine:
         self.schedulers = []
         self._setup_master()
         self._setup_workers()
+        self.async_queue = [[] for _ in range(len(list(self.models[0].parameters())))]
         # self.parameter_correlation = parameter_correlation
         # self.euclidean_distance = euclidean_distance
         # self.mean_squared_difference = mean_squared_difference
@@ -284,6 +284,14 @@ class WashingMachine:
 
                 lr = self.optimizer_kwargs.get("lr", 1)
 
+                # for model_idx in range(self.num_workers):
+                #     momentum = (
+                #         self.optimizers[model_idx]
+                #         .state[model_params[model_idx][param_idx]]["exp_avg"]
+                #         .view(-1)[masked_indices]
+                #     )
+                #     new_params[model_idx] -= momentum * self.async_lag * lr * 0.5
+
                 # Compute pseudo gradients for each model
                 # pseudo_gradients = torch.stack(
                 #     [
@@ -293,10 +301,10 @@ class WashingMachine:
                 #         for model_idx in range(self.num_workers)
                 #     ]
                 # )
-                self.async_queue.append((new_params, masked_indices))
+                self.async_queue[param_idx].append((new_params, masked_indices))
 
-                if len(self.async_queue) > self.async_lag:
-                    new_params, masked_indices = self.async_queue.pop(0)
+                if len(self.async_queue[param_idx]) > self.async_lag:
+                    new_params, masked_indices = self.async_queue[param_idx].pop(0)
                     for model_idx in range(self.num_workers):
                         model_params[model_idx][param_idx].view(-1).masked_scatter_(
                             masked_indices, new_params[model_idx]
