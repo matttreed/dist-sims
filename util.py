@@ -6,6 +6,7 @@ import argparse
 import itertools
 import copy
 from transformers import AutoTokenizer
+import sys
 
 
 def str2bool(v):
@@ -267,3 +268,57 @@ def get_latest_commit_and_message():
     except subprocess.CalledProcessError as e:
         print("Error while retrieving the latest commit:", e.output.decode("utf-8"))
         return None, None
+
+
+def custom_float_round(tensor, exponent_bits, mantissa_bits):
+    # IEEE 754 single-precision floating-point constants
+    BITS = 32  # Single precision: 32 bits
+    EXPONENT_MASK = 0x7F800000  # Exponent mask
+    MANTISSA_MASK = 0x007FFFFF  # Mantissa mask
+    SIGN_MASK = 0x80000000  # Sign mask
+    BIAS = 127  # Exponent bias for 32-bit floats
+
+    raw = tensor.view(torch.int32)
+
+    sign = raw & SIGN_MASK
+    exponent = (raw & EXPONENT_MASK) >> 23
+    mantissa = raw & MANTISSA_MASK
+
+    max_exponent = (1 << (exponent_bits - 1)) - 1
+    min_exponent = -max_exponent
+
+    true_exponent = exponent - BIAS
+    clamped_exponent = torch.clamp(true_exponent, min=min_exponent, max=max_exponent)
+    new_exponent = (clamped_exponent + BIAS).to(torch.int32)
+
+    mantissa_shift = 23 - mantissa_bits
+    quantized_mantissa = (mantissa >> mantissa_shift) << mantissa_shift
+
+    new_raw = sign | (new_exponent << 23) | quantized_mantissa
+
+    rounded_tensor = new_raw.view(torch.float32)
+
+    return rounded_tensor
+
+
+def mimic_precision(tensor, precision="float16"):
+    if precision == "float32":
+        return tensor
+    elif precision == "float16":
+        return custom_float_round(tensor, exponent_bits=5, mantissa_bits=10)
+    elif precision == "bfloat16":
+        return custom_float_round(tensor, exponent_bits=8, mantissa_bits=7)
+    elif precision in "float8":
+        return custom_float_round(tensor, exponent_bits=4, mantissa_bits=3)
+    elif precision in "bfloat8":
+        return custom_float_round(tensor, exponent_bits=5, mantissa_bits=2)
+    else:
+        raise ValueError(f"Unknown precision: {precision}")
+
+
+if __name__ == "__main__":
+    args = sys.argv
+    precision = str(args[1])
+    input_val = torch.tensor(float(args[2]), dtype=torch.float32)
+    print(input_val)
+    print(mimic_precision(input_val, precision=precision))

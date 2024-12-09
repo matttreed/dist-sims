@@ -14,6 +14,7 @@ from util import (
     time_function,
     drift_penalty,
     get_latest_commit_and_message,
+    mimic_precision,
 )
 import numpy as np
 
@@ -54,6 +55,7 @@ class WashingMachine:
         async_lag=0,
         device=None,
         compile=False,
+        shuffle_quantization="float32",
     ) -> None:
         super().__init__()
         self.model_cls = model_cls
@@ -88,6 +90,7 @@ class WashingMachine:
         self.log_stats_interval = log_stats_interval
         self.async_lag = async_lag
         self.compile = compile
+        self.shuffle_quantization = shuffle_quantization
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if not device else device
 
@@ -142,6 +145,7 @@ class WashingMachine:
             "commit_message": commit_message,
             "topology_type": self.topology_type,
             "async_lag": self.async_lag,
+            "shuffle_quantization": self.shuffle_quantization,
         }
 
         if self.wandb_project:
@@ -303,6 +307,7 @@ class WashingMachine:
                 #         for model_idx in range(self.num_workers)
                 #     ]
                 # )
+                new_params = mimic_precision(new_params, precision=self.shuffle_quantization)
                 self.async_queue[param_idx].append((new_params, masked_indices))
 
                 if len(self.async_queue[param_idx]) > self.async_lag:

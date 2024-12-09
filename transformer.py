@@ -25,6 +25,13 @@ if __name__ == "__main__":
     parser.add_argument("--outer_learning_rate", type=float, nargs="+", default=0.7)
     parser.add_argument("--data_parallel", type=bool, nargs="+", default=True)
     parser.add_argument("--wash_interval", type=int, nargs="+", default=1)
+    parser.add_argument(
+        "--shuffle_quantization",
+        type=str,
+        nargs="+",
+        default="float32",
+        choices=["float32", "float16", "bfloat16", "float8", "bfloat8"],
+    )
     parser.add_argument("--max_local_step", type=int, nargs="+", default=5000)
     parser.add_argument("--save_dir", type=str, nargs="+", default=None)
     parser.add_argument("--ckpt_interval", type=int, nargs="+", default=None)
