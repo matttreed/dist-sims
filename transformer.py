@@ -121,6 +121,7 @@ if __name__ == "__main__":
             async_lag=args.async_lag,
             device=args.device,
             compile=args.compile,
+            shuffle_quantization=args.shuffle_quantization,
         )
 
         assert args.train ^ args.generate ^ args.profile, "Must specify exactly one of train, generate, profile"

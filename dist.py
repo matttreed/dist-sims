@@ -385,6 +385,11 @@ class WashingMachine:
     #         )
 
     def _log_stats(self):
+        # all_model_params = torch.cat([param.view(-1) for param in self.models[0].parameters()])
+        # avg_weight_value = all_model_params.abs().mean().item()
+        # std_weight_value = all_model_params.abs().std().item()
+        # print(f"Avg Weight Value: {avg_weight_value:.4f}")
+        # print(f"Std Weight Value: {std_weight_value:.4f}")
         if not self.wandb_project:
             return
 
