@@ -238,6 +238,7 @@ class WashingMachine:
                 new_params = torch.stack([param[param_idx].view(-1)[masked_indices] for param in model_params])[
                     row_indices, column_indices
                 ]
+                new_params = mimic_precision(new_params, precision=self.shuffle_quantization)
 
                 for model_idx in range(self.num_workers):
                     updated_param = new_params[model_idx]
@@ -263,7 +264,10 @@ class WashingMachine:
 
                 if self.topology_type == "full":
                     new_params = (
-                        torch.stack([param[param_idx].view(-1)[masked_indices] for param in model_params])
+                        mimic_precision(
+                            torch.stack([param[param_idx].view(-1)[masked_indices] for param in model_params]),
+                            precision=self.shuffle_quantization,
+                        )
                         .mean(dim=0)
                         .unsqueeze(0)
                         .repeat(self.num_workers, 1)
@@ -277,12 +281,15 @@ class WashingMachine:
                         right_neighbor_idx = (model_idx + 1) % self.num_workers  # Wrap around to the first model
 
                         # Stack the parameters of the current model and its neighbors
-                        neighbor_params = torch.stack(
-                            [
-                                model_params[left_neighbor_idx][param_idx].view(-1)[masked_indices],
-                                model_params[model_idx][param_idx].view(-1)[masked_indices],
-                                model_params[right_neighbor_idx][param_idx].view(-1)[masked_indices],
-                            ]
+                        neighbor_params = mimic_precision(
+                            torch.stack(
+                                [
+                                    model_params[left_neighbor_idx][param_idx].view(-1)[masked_indices],
+                                    model_params[model_idx][param_idx].view(-1)[masked_indices],
+                                    model_params[right_neighbor_idx][param_idx].view(-1)[masked_indices],
+                                ]
+                            ),
+                            precision=self.shuffle_quantization,
                         )
 
                         # Compute the average for the current model
