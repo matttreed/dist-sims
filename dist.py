@@ -304,7 +304,9 @@ class WashingMachine:
                                 ]
                             )
                         )
+                        .sqrt()
                         .mean(dim=0)
+                        .pow(2)
                         .unsqueeze(0)
                         .repeat(self.num_workers, 1)
                     )
