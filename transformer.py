@@ -56,6 +56,7 @@ if __name__ == "__main__":
     parser.add_argument("--drift_penalty", type=float, nargs="+", default=None)
     parser.add_argument("--device", type=str, nargs="+", default=None)
     parser.add_argument("--shuffle_optimizer_state", type=str2bool, nargs="+", default=False)
+    parser.add_argument("--indexing_type", type=str, nargs="+", default="random", choices=["random", "partitions"])
     parser.add_argument("--compile", action="store_true")
     parser.add_argument("--profile", action="store_true")
     parser.add_argument("--train", action="store_true")
@@ -124,6 +125,7 @@ if __name__ == "__main__":
             compile=args.compile,
             shuffle_quantization=args.shuffle_quantization,
             shuffle_optimizer_state=args.shuffle_optimizer_state,
+            indexing_type=args.indexing_type,
         )
 
         assert args.train ^ args.generate ^ args.profile, "Must specify exactly one of train, generate, profile"

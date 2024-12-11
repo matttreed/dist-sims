@@ -7,6 +7,7 @@ import itertools
 import copy
 from transformers import AutoTokenizer
 import sys
+import math
 
 
 def str2bool(v):
@@ -316,9 +317,59 @@ def mimic_precision(tensor, precision="float16"):
         raise ValueError(f"Unknown precision: {precision}")
 
 
-if __name__ == "__main__":
-    args = sys.argv
-    precision = str(args[1])
-    input_val = torch.tensor(float(args[2]), dtype=torch.float32)
-    print(input_val)
-    print(mimic_precision(input_val, precision=precision))
+# if __name__ == "__main__":
+#     args = sys.argv
+#     precision = str(args[1])
+#     input_val = torch.tensor(float(args[2]), dtype=torch.float32)
+#     print(input_val)
+#     print(mimic_precision(input_val, precision=precision))
+
+
+class IndexSelector:
+    def __init__(self, params, p):
+        self.state = {param: {} for param in params}
+        self.p = p
+
+    def get_indices(self, param):
+        return torch.ones(param.size).bool()
+
+
+class RandomIndexSelector(IndexSelector):
+    def get_indices(self, param):
+        return torch.bernoulli(torch.full(param.shape, self.p, device=param.device)).bool()
+
+
+class PartitionedIndexSelector(IndexSelector):
+    def __init__(self, params, p):
+        super().__init__(params, p)
+
+        self._set_partitions()
+
+    def _set_partitions(self):
+        for param, param_state in self.state.items():
+            param_state["curr_partition"] = 0
+            param_state["num_partitions"] = min(math.ceil(1 / self.p), param.numel())
+            param_state["partitions"] = (
+                torch.rand(param.numel(), device=param.device).argsort().view(param.shape)
+                % param_state["num_partitions"]
+            )
+
+    def get_indices(self, param):
+        if self.state[param]["curr_partition"] >= self.state[param]["num_partitions"]:
+            self._set_partitions()
+
+        indices = (self.state[param]["partitions"] == self.state[param]["curr_partition"]).bool()
+
+        self.state[param]["curr_partition"] += 1
+
+        return indices
+
+
+# if __name__ == "__main__":
+#     a = torch.rand((1, 4))
+#     b = torch.rand((5, 4))
+
+#     selector = PartitionedIndexSelector([a, b], p=0.66)
+
+#     for i in range(10):
+#         print(selector.get_indices(a))

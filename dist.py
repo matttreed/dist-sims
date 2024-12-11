@@ -15,6 +15,9 @@ from util import (
     drift_penalty,
     get_latest_commit_and_message,
     mimic_precision,
+    IndexSelector,
+    RandomIndexSelector,
+    PartitionedIndexSelector,
 )
 import numpy as np
 
@@ -57,6 +60,7 @@ class WashingMachine:
         compile=False,
         shuffle_quantization="float32",
         shuffle_optimizer_state=False,
+        indexing_type="random",
     ) -> None:
         super().__init__()
         self.model_cls = model_cls
@@ -93,6 +97,7 @@ class WashingMachine:
         self.compile = compile
         self.shuffle_quantization = shuffle_quantization
         self.shuffle_optimizer_state = shuffle_optimizer_state
+        self.indexing_type = indexing_type
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if not device else device
 
@@ -105,6 +110,13 @@ class WashingMachine:
         self.schedulers = []
         self._setup_master()
         self._setup_workers()
+        if self.indexing_type == "partitions":
+            self.index_selector: IndexSelector = PartitionedIndexSelector(
+                self.master_model.parameters(), p=self.p_shuffle
+            )
+        elif self.indexing_type == "random":
+            self.index_selector: IndexSelector = RandomIndexSelector(self.master_model.parameters(), p=self.p_shuffle)
+
         self.async_queue = [[] for _ in range(len(list(self.models[0].parameters())))]
         # self.parameter_correlation = parameter_correlation
         # self.euclidean_distance = euclidean_distance
@@ -119,6 +131,8 @@ class WashingMachine:
         assert self.topology_type in ["full", "ring"], "Invalid topology type"
 
         assert self.shuffle_type in ["shuffle", "avg"], "Invalid shuffle type"
+
+        assert self.indexing_type in ["random", "partitions"], "Invalid indexing type"
 
         commit_hash, commit_message = get_latest_commit_and_message()
 
@@ -148,6 +162,8 @@ class WashingMachine:
             "topology_type": self.topology_type,
             "async_lag": self.async_lag,
             "shuffle_quantization": self.shuffle_quantization,
+            "shuffle_optimizer_state": self.shuffle_optimizer_state,
+            "indexing_type": self.indexing_type,
         }
 
         if self.wandb_project:
@@ -236,6 +252,7 @@ class WashingMachine:
             return
         with torch.no_grad():
             model_params = [list(model.parameters()) for model in self.models]
+            master_model_params = list(self.master_model.parameters())  # used only for index selector
 
             L = len(model_params[0])
 
@@ -243,16 +260,16 @@ class WashingMachine:
                 p_shuffle = (
                     self.p_shuffle if not self.modulate_p_shuffle else self.p_shuffle * (1 - param_idx / (L - 1))
                 )
-                p_shuffle /= 1 - 1 / self.num_workers  # Account for poss of shuffling to self.
+                if self.shuffle_type == "shuffle":
+                    p_shuffle /= 1 - 1 / self.num_workers  # Account for poss of shuffling to self.
 
-                size = model_params[0][param_idx].numel()
-                masked_indices = torch.bernoulli(torch.full((size,), p_shuffle, device=self.device)).bool()
+                masked_indices = self.index_selector.get_indices(master_model_params[param_idx])
                 num_masked = masked_indices.sum()
 
                 if self.topology_type == "full":
                     new_params = (
                         mimic_precision(
-                            torch.stack([param[param_idx].view(-1)[masked_indices] for param in model_params]),
+                            torch.stack([param[param_idx][masked_indices] for param in model_params]),
                             precision=self.shuffle_quantization,
                         )
                         .mean(dim=0)
@@ -264,9 +281,9 @@ class WashingMachine:
                         mimic_precision(
                             torch.stack(
                                 [
-                                    self.optimizers[model_idx]
-                                    .state[model_params[model_idx][param_idx]]["exp_avg"]
-                                    .view(-1)[masked_indices]
+                                    self.optimizers[model_idx].state[model_params[model_idx][param_idx]]["exp_avg"][
+                                        masked_indices
+                                    ]
                                     for model_idx in range(self.num_workers)
                                 ]
                             )
@@ -280,9 +297,9 @@ class WashingMachine:
                         mimic_precision(
                             torch.stack(
                                 [
-                                    self.optimizers[model_idx]
-                                    .state[model_params[model_idx][param_idx]]["exp_avg_sq"]
-                                    .view(-1)[masked_indices]
+                                    self.optimizers[model_idx].state[model_params[model_idx][param_idx]]["exp_avg_sq"][
+                                        masked_indices
+                                    ]
                                     for model_idx in range(self.num_workers)
                                 ]
                             )
@@ -305,9 +322,9 @@ class WashingMachine:
                         neighbor_params = mimic_precision(
                             torch.stack(
                                 [
-                                    model_params[left_neighbor_idx][param_idx].view(-1)[masked_indices],
-                                    model_params[model_idx][param_idx].view(-1)[masked_indices],
-                                    model_params[right_neighbor_idx][param_idx].view(-1)[masked_indices],
+                                    model_params[left_neighbor_idx][param_idx][masked_indices],
+                                    model_params[model_idx][param_idx][masked_indices],
+                                    model_params[right_neighbor_idx][param_idx][masked_indices],
                                 ]
                             ),
                             precision=self.shuffle_quantization,
@@ -319,15 +336,15 @@ class WashingMachine:
                         neighbor_exp_avg = mimic_precision(
                             torch.stack(
                                 [
-                                    self.optimizers[left_neighbor_idx]
-                                    .state[model_params[left_neighbor_idx][param_idx]]["exp_avg"]
-                                    .view(-1)[masked_indices],
-                                    self.optimizers[model_idx]
-                                    .state[model_params[model_idx][param_idx]]["exp_avg"]
-                                    .view(-1)[masked_indices],
-                                    self.optimizers[right_neighbor_idx]
-                                    .state[model_params[right_neighbor_idx][param_idx]]["exp_avg"]
-                                    .view(-1)[masked_indices],
+                                    self.optimizers[left_neighbor_idx].state[
+                                        model_params[left_neighbor_idx][param_idx]
+                                    ]["exp_avg"][masked_indices],
+                                    self.optimizers[model_idx].state[model_params[model_idx][param_idx]]["exp_avg"][
+                                        masked_indices
+                                    ],
+                                    self.optimizers[right_neighbor_idx].state[
+                                        model_params[right_neighbor_idx][param_idx]
+                                    ]["exp_avg"][masked_indices],
                                 ]
                             ),
                             precision=self.shuffle_quantization,
@@ -338,15 +355,15 @@ class WashingMachine:
                         neighbor_exp_avg_sq = mimic_precision(
                             torch.stack(
                                 [
-                                    self.optimizers[left_neighbor_idx]
-                                    .state[model_params[left_neighbor_idx][param_idx]]["exp_avg_sq"]
-                                    .view(-1)[masked_indices],
-                                    self.optimizers[model_idx]
-                                    .state[model_params[model_idx][param_idx]]["exp_avg_sq"]
-                                    .view(-1)[masked_indices],
-                                    self.optimizers[right_neighbor_idx]
-                                    .state[model_params[right_neighbor_idx][param_idx]]["exp_avg_sq"]
-                                    .view(-1)[masked_indices],
+                                    self.optimizers[left_neighbor_idx].state[
+                                        model_params[left_neighbor_idx][param_idx]
+                                    ]["exp_avg_sq"][masked_indices],
+                                    self.optimizers[model_idx].state[model_params[model_idx][param_idx]]["exp_avg_sq"][
+                                        masked_indices
+                                    ],
+                                    self.optimizers[right_neighbor_idx].state[
+                                        model_params[right_neighbor_idx][param_idx]
+                                    ]["exp_avg_sq"][masked_indices],
                                 ]
                             ),
                             precision=self.shuffle_quantization,
@@ -382,15 +399,15 @@ class WashingMachine:
                     new_params, new_exp_avg, new_exp_avg_sq, masked_indices = self.async_queue[param_idx].pop(0)
                     for model_idx in range(self.num_workers):
                         param = model_params[model_idx][param_idx]
-                        param.view(-1).masked_scatter_(masked_indices, new_params[model_idx])
+                        param.masked_scatter_(masked_indices, new_params[model_idx])
 
                         if self.shuffle_optimizer_state:
                             state = self.optimizers[model_idx].state[param]
-                            state["exp_avg"].view(-1).masked_scatter_(masked_indices, new_exp_avg[model_idx])
-                            state["exp_avg_sq"].view(-1).masked_scatter_(masked_indices, new_exp_avg_sq[model_idx])
+                            state["exp_avg"].masked_scatter_(masked_indices, new_exp_avg[model_idx])
+                            state["exp_avg_sq"].masked_scatter_(masked_indices, new_exp_avg_sq[model_idx])
 
                     # if model_params[model_idx][param_idx].grad is not None:
-                    #     model_params[model_idx][param_idx].grad.view(-1).masked_scatter_(
+                    #     model_params[model_idx][param_idx].grad.masked_scatter_(
                     #         masked_indices, pseudo_gradients[model_idx]
                     #     )
 
