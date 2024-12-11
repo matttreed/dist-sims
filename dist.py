@@ -406,7 +406,7 @@ class WashingMachine:
                         if self.shuffle_optimizer_state:
                             state = self.optimizers[model_idx].state[param]
                             state["exp_avg"].masked_scatter_(masked_indices, new_exp_avg[model_idx])
-                            state["exp_avg_sq"].masked_scatter_(masked_indices, new_exp_avg_sq[model_idx])
+                            # state["exp_avg_sq"].masked_scatter_(masked_indices, new_exp_avg_sq[model_idx])
 
                     # if model_params[model_idx][param_idx].grad is not None:
                     #     model_params[model_idx][param_idx].grad.masked_scatter_(
