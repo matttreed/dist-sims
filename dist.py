@@ -290,11 +290,17 @@ class WashingMachine:
                             ]
                         )
                     )
-                    if num_masked > 1:
-                        new_exp_avg_weights = new_exp_avg.view(self.num_workers, -1).norm(dim=1)
-                        new_exp_avg_weights /= new_exp_avg_weights.sum()
-                    else:
-                        new_exp_avg_weights = torch.ones(self.num_workers, device=self.device) / self.num_workers
+                    new_exp_avg_weights = torch.tensor(
+                        [
+                            self.optimizers[model_idx]
+                            .state[model_params[model_idx][param_idx]]["exp_avg"]
+                            .view(-1)
+                            .norm()
+                            .item()
+                            for model_idx in range(self.num_workers)
+                        ]
+                    )
+                    new_exp_avg_weights /= new_exp_avg_weights.sum()
 
                     new_exp_avg *= new_exp_avg_weights.unsqueeze(1)
                     new_exp_avg = new_exp_avg.sum(dim=0)
@@ -304,16 +310,24 @@ class WashingMachine:
                             [
                                 self.optimizers[model_idx]
                                 .state[model_params[model_idx][param_idx]]["exp_avg_sq"][masked_indices]
+                                .view(-1)
                                 .sqrt()
                                 for model_idx in range(self.num_workers)
                             ]
                         )
                     )
-                    if num_masked > 1:
-                        new_exp_avg_sq_weights = new_exp_avg_sq.view(self.num_workers, -1).var(dim=1)
-                        new_exp_avg_sq_weights /= new_exp_avg_sq_weights.sum()
-                    else:
-                        new_exp_avg_sq_weights = torch.ones(self.num_workers, device=self.device) / self.num_workers
+                    # be careful of taking var for parameters with 1 or 0 val?
+                    new_exp_avg_sq_weights = torch.tensor(
+                        [
+                            self.optimizers[model_idx]
+                            .state[model_params[model_idx][param_idx]]["exp_avg_sq"]
+                            .view(-1)
+                            .var()
+                            .item()
+                            for model_idx in range(self.num_workers)
+                        ]
+                    )
+                    new_exp_avg_sq_weights /= new_exp_avg_sq_weights.sum()
 
                     new_exp_avg_sq *= new_exp_avg_sq_weights.unsqueeze(1)
                     new_exp_avg_sq = new_exp_avg_sq.sum(dim=0).pow(2)
