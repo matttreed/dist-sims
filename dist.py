@@ -298,7 +298,8 @@ class WashingMachine:
                             .norm()
                             .item()
                             for model_idx in range(self.num_workers)
-                        ]
+                        ],
+                        device=self.device,
                     )
                     new_exp_avg_weights /= new_exp_avg_weights.sum()
 
@@ -325,7 +326,8 @@ class WashingMachine:
                             .var()
                             .item()
                             for model_idx in range(self.num_workers)
-                        ]
+                        ],
+                        device=self.device,
                     )
                     new_exp_avg_sq_weights /= new_exp_avg_sq_weights.sum()
 
