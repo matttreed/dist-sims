@@ -42,7 +42,7 @@ if __name__ == "__main__":
     parser.add_argument("--async_lag", type=int, nargs="+", default=0)
     parser.add_argument("--synchronize_interval", type=int, nargs="+", default=None)
     parser.add_argument("--synchronize_method", type=str, nargs="+", default="avg", choices=["avg", "diloco"])
-    parser.add_argument("--shuffle_type", type=str, choices=["shuffle", "avg"], nargs="+", default="shuffle")
+    parser.add_argument("--shuffle_type", type=str, choices=["shuffle", "avg"], nargs="+", default="avg")
     parser.add_argument("--topology_type", type=str, choices=["ring", "full"], nargs="+", default="full")
     parser.add_argument("--vocab_size", type=int, nargs="+", default=50304)
     parser.add_argument("--block_size", type=int, nargs="+", default=512)
@@ -55,6 +55,7 @@ if __name__ == "__main__":
     parser.add_argument("--log_stats_interval", type=int, nargs="+", default=10)
     parser.add_argument("--drift_penalty", type=float, nargs="+", default=None)
     parser.add_argument("--device", type=str, nargs="+", default=None)
+    parser.add_argument("--shuffle_optimizer_state", type=str2bool, nargs="+", default=False)
     parser.add_argument("--compile", action="store_true")
     parser.add_argument("--profile", action="store_true")
     parser.add_argument("--train", action="store_true")
@@ -122,6 +123,7 @@ if __name__ == "__main__":
             device=args.device,
             compile=args.compile,
             shuffle_quantization=args.shuffle_quantization,
+            shuffle_optimizer_state=args.shuffle_optimizer_state,
         )
 
         assert args.train ^ args.generate ^ args.profile, "Must specify exactly one of train, generate, profile"

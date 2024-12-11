@@ -56,6 +56,7 @@ class WashingMachine:
         device=None,
         compile=False,
         shuffle_quantization="float32",
+        shuffle_optimizer_state=False,
     ) -> None:
         super().__init__()
         self.model_cls = model_cls
@@ -91,6 +92,7 @@ class WashingMachine:
         self.async_lag = async_lag
         self.compile = compile
         self.shuffle_quantization = shuffle_quantization
+        self.shuffle_optimizer_state = shuffle_optimizer_state
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if not device else device
 
@@ -151,21 +153,6 @@ class WashingMachine:
         if self.wandb_project:
             wandb.init(project=self.wandb_project, config=self.wandb_config)
             wandb.config.update(wandb_config)
-
-        if self.compile:
-            self.master_model = torch.compile(self.master_model)
-            for model in self.models:
-                model = torch.compile(model)
-
-            self.loss_fn = torch.compile(self.loss_fn)
-
-            # self.parameter_correlation = torch.compile(self.parameter_correlation)
-            # self.euclidean_distance = torch.compile(self.euclidean_distance)
-            # self.mean_squared_difference = torch.compile(self.mean_squared_difference)
-            # self.cosine_similarity = torch.compile(self.cosine_similarity)
-
-            self._compiled_random_shuffle_params = torch.compile(self._random_shuffle_params)
-            self._compiled_ring_shuffle_params = torch.compile(self._ring_shuffle_params)
 
     def _setup_master(self):
 
@@ -272,8 +259,42 @@ class WashingMachine:
                         .unsqueeze(0)
                         .repeat(self.num_workers, 1)
                     )
+
+                    new_exp_avg = (
+                        mimic_precision(
+                            torch.stack(
+                                [
+                                    self.optimizers[model_idx]
+                                    .state[model_params[model_idx][param_idx]]["exp_avg"]
+                                    .view(-1)[masked_indices]
+                                    for model_idx in range(self.num_workers)
+                                ]
+                            )
+                        )
+                        .mean(dim=0)
+                        .unsqueeze(0)
+                        .repeat(self.num_workers, 1)
+                    )
+
+                    new_exp_avg_sq = (
+                        mimic_precision(
+                            torch.stack(
+                                [
+                                    self.optimizers[model_idx]
+                                    .state[model_params[model_idx][param_idx]]["exp_avg_sq"]
+                                    .view(-1)[masked_indices]
+                                    for model_idx in range(self.num_workers)
+                                ]
+                            )
+                        )
+                        .mean(dim=0)
+                        .unsqueeze(0)
+                        .repeat(self.num_workers, 1)
+                    )
                 elif self.topology_type == "ring":
                     new_params = torch.zeros(self.num_workers, num_masked, device=self.device)
+                    new_exp_avg = torch.zeros(self.num_workers, num_masked, device=self.device)
+                    new_exp_avg_sq = torch.zeros(self.num_workers, num_masked, device=self.device)
 
                     for model_idx in range(self.num_workers):
                         # Get indices of neighbors in the ring
@@ -295,6 +316,44 @@ class WashingMachine:
                         # Compute the average for the current model
                         new_params[model_idx] = neighbor_params.mean(dim=0)
 
+                        neighbor_exp_avg = mimic_precision(
+                            torch.stack(
+                                [
+                                    self.optimizers[left_neighbor_idx]
+                                    .state[model_params[left_neighbor_idx][param_idx]]["exp_avg"]
+                                    .view(-1)[masked_indices],
+                                    self.optimizers[model_idx]
+                                    .state[model_params[model_idx][param_idx]]["exp_avg"]
+                                    .view(-1)[masked_indices],
+                                    self.optimizers[right_neighbor_idx]
+                                    .state[model_params[right_neighbor_idx][param_idx]]["exp_avg"]
+                                    .view(-1)[masked_indices],
+                                ]
+                            ),
+                            precision=self.shuffle_quantization,
+                        )
+
+                        new_exp_avg[model_idx] = neighbor_exp_avg.mean(dim=0)
+
+                        neighbor_exp_avg_sq = mimic_precision(
+                            torch.stack(
+                                [
+                                    self.optimizers[left_neighbor_idx]
+                                    .state[model_params[left_neighbor_idx][param_idx]]["exp_avg_sq"]
+                                    .view(-1)[masked_indices],
+                                    self.optimizers[model_idx]
+                                    .state[model_params[model_idx][param_idx]]["exp_avg_sq"]
+                                    .view(-1)[masked_indices],
+                                    self.optimizers[right_neighbor_idx]
+                                    .state[model_params[right_neighbor_idx][param_idx]]["exp_avg_sq"]
+                                    .view(-1)[masked_indices],
+                                ]
+                            ),
+                            precision=self.shuffle_quantization,
+                        )
+
+                        new_exp_avg_sq[model_idx] = neighbor_exp_avg_sq.mean(dim=0)
+
                 lr = self.optimizer_kwargs.get("lr", 1)
 
                 # for model_idx in range(self.num_workers):
@@ -315,14 +374,21 @@ class WashingMachine:
                 #     ]
                 # )
                 new_params = mimic_precision(new_params, precision=self.shuffle_quantization)
-                self.async_queue[param_idx].append((new_params, masked_indices))
+                new_exp_avg = mimic_precision(new_exp_avg, precision=self.shuffle_quantization)
+                new_exp_avg_sq = mimic_precision(new_exp_avg_sq, precision=self.shuffle_quantization)
+                self.async_queue[param_idx].append((new_params, new_exp_avg, new_exp_avg_sq, masked_indices))
 
                 if len(self.async_queue[param_idx]) > self.async_lag:
-                    new_params, masked_indices = self.async_queue[param_idx].pop(0)
+                    new_params, new_exp_avg, new_exp_avg_sq, masked_indices = self.async_queue[param_idx].pop(0)
                     for model_idx in range(self.num_workers):
-                        model_params[model_idx][param_idx].view(-1).masked_scatter_(
-                            masked_indices, new_params[model_idx]
-                        )
+                        param = model_params[model_idx][param_idx]
+                        param.view(-1).masked_scatter_(masked_indices, new_params[model_idx])
+
+                        if self.shuffle_optimizer_state:
+                            state = self.optimizers[model_idx].state[param]
+                            state["exp_avg"].view(-1).masked_scatter_(masked_indices, new_exp_avg[model_idx])
+                            state["exp_avg_sq"].view(-1).masked_scatter_(masked_indices, new_exp_avg_sq[model_idx])
+
                     # if model_params[model_idx][param_idx].grad is not None:
                     #     model_params[model_idx][param_idx].grad.view(-1).masked_scatter_(
                     #         masked_indices, pseudo_gradients[model_idx]
