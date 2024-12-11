@@ -308,7 +308,7 @@ class WashingMachine:
                             ]
                         )
                     )
-                    new_exp_avg_sq_weights = new_exp_avg_sq.view(self.num_workers, -1).var(dim=1)
+                    new_exp_avg_sq_weights = new_exp_avg_sq.view(self.num_workers, -1).var(dim=1, unbiased=True)
                     new_exp_avg_sq_weights /= new_exp_avg_sq_weights.sum()
                     if new_exp_avg_sq_weights.sum() == 0:
                         new_exp_avg_sq_weights = torch.ones(self.num_workers) / self.num_workers
