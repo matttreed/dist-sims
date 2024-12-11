@@ -290,9 +290,10 @@ class WashingMachine:
                             ]
                         )
                     )
-                    new_exp_avg_weights = new_exp_avg.view(self.num_workers, -1).norm(dim=1)
-                    new_exp_avg_weights /= new_exp_avg_weights.sum()
-                    if new_exp_avg_weights.sum() == 0:
+                    if num_masked > 1:
+                        new_exp_avg_weights = new_exp_avg.view(self.num_workers, -1).norm(dim=1)
+                        new_exp_avg_weights /= new_exp_avg_weights.sum()
+                    else:
                         new_exp_avg_weights = torch.ones(self.num_workers) / self.num_workers
 
                     new_exp_avg *= new_exp_avg_weights.unsqueeze(1)
@@ -308,9 +309,10 @@ class WashingMachine:
                             ]
                         )
                     )
-                    new_exp_avg_sq_weights = new_exp_avg_sq.view(self.num_workers, -1).var(dim=1, unbiased=True)
-                    new_exp_avg_sq_weights /= new_exp_avg_sq_weights.sum()
-                    if new_exp_avg_sq_weights.sum() == 0:
+                    if num_masked > 1:
+                        new_exp_avg_sq_weights = new_exp_avg_sq.view(self.num_workers, -1).var(dim=1, unbiased=True)
+                        new_exp_avg_sq_weights /= new_exp_avg_sq_weights.sum()
+                    else:
                         new_exp_avg_sq_weights = torch.ones(self.num_workers) / self.num_workers
 
                     new_exp_avg_sq *= new_exp_avg_sq_weights.unsqueeze(1)
