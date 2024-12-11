@@ -266,6 +266,9 @@ class WashingMachine:
                 masked_indices = self.index_selector.get_indices(master_model_params[param_idx])
                 num_masked = masked_indices.sum()
 
+                if num_masked == 0:
+                    continue
+
                 if self.topology_type == "full":
                     new_params = (
                         mimic_precision(
@@ -289,6 +292,9 @@ class WashingMachine:
                     )
                     new_exp_avg_weights = new_exp_avg.view(self.num_workers, -1).norm(dim=1)
                     new_exp_avg_weights /= new_exp_avg_weights.sum()
+                    if new_exp_avg_weights.sum() == 0:
+                        new_exp_avg_weights = torch.ones(self.num_workers) / self.num_workers
+
                     new_exp_avg *= new_exp_avg_weights.unsqueeze(1)
                     new_exp_avg = new_exp_avg.sum(dim=0)
 
@@ -304,6 +310,9 @@ class WashingMachine:
                     )
                     new_exp_avg_sq_weights = new_exp_avg_sq.view(self.num_workers, -1).var(dim=1)
                     new_exp_avg_sq_weights /= new_exp_avg_sq_weights.sum()
+                    if new_exp_avg_sq_weights.sum() == 0:
+                        new_exp_avg_sq_weights = torch.ones(self.num_workers) / self.num_workers
+
                     new_exp_avg_sq *= new_exp_avg_sq_weights.unsqueeze(1)
                     new_exp_avg_sq = new_exp_avg_sq.sum(dim=0).pow(2)
                 elif self.topology_type == "ring":
