@@ -21,6 +21,7 @@ from util import (
     TopKGradIndexSelector,
 )
 import numpy as np
+import math
 
 
 class WashingMachine:
@@ -62,6 +63,7 @@ class WashingMachine:
         shuffle_quantization="float32",
         shuffle_optimizer_state=False,
         indexing_type="random",
+        final_p_shuffle=None,
     ) -> None:
         super().__init__()
         self.model_cls = model_cls
@@ -80,6 +82,7 @@ class WashingMachine:
         self.ckpt_interval = ckpt_interval
         self.eval_interval = eval_interval
         self.eval_iters = eval_iters
+        self.initial_p_shuffle = p_shuffle
         self.p_shuffle = p_shuffle
         self.shuffle_type = shuffle_type
         self.topology_type = topology_type
@@ -99,6 +102,7 @@ class WashingMachine:
         self.shuffle_quantization = shuffle_quantization
         self.shuffle_optimizer_state = shuffle_optimizer_state
         self.indexing_type = indexing_type
+        self.final_p_shuffle = final_p_shuffle
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if not device else device
 
@@ -167,6 +171,7 @@ class WashingMachine:
             "shuffle_quantization": self.shuffle_quantization,
             "shuffle_optimizer_state": self.shuffle_optimizer_state,
             "indexing_type": self.indexing_type,
+            "final_p_shuffle": self.final_p_shuffle,
         }
 
         if self.wandb_project:
@@ -251,8 +256,17 @@ class WashingMachine:
                     model_params[model_idx][param_idx].view(-1).masked_scatter_(masked_indices, updated_param)
 
     def _avg_params(self):
+
         if self.num_workers == 1 or self.p_shuffle == 0:
             return
+
+        if self.final_p_shuffle:
+            self.p_shuffle = self.final_p_shuffle + 0.5 * (self.p_shuffle - self.final_p_shuffle) * (
+                1 + math.cos(math.pi * self.local_step / self.max_local_step)
+            )
+
+        print(self.p_shuffle)
+
         with torch.no_grad():
             model_params = [list(model.parameters()) for model in self.models]
             master_model_params = list(self.master_model.parameters())  # used only for index selector
@@ -520,22 +534,26 @@ class WashingMachine:
         # print(f"Parameter Correlation: {param_correlation:.4f}")
         # print(f"Euclidean Distance: {euclidean_dist:.4f}")
 
-        wandb.log(
-            {
-                "global_step": self.local_step * self.num_workers,
-                "local_step": self.local_step,
-                "lr": self.optimizers[0].param_groups[0]["lr"],
-                "loss": random.choice(self.losses[-self.num_workers :]),
-                "grad_norm": random.choice(self.grad_norms[-self.num_workers :]),
-                "cum_grad_norm_var": cum_grad_norm_var,
-                "sliding_grad_norm_var": sliding_grad_norm_var,
-                "cum_loss_var": cum_loss_var,
-                "sliding_loss_var": sliding_loss_var,
-                "p_shuffle": self.p_shuffle,
-                # "param_correlation": param_correlation,
-                # "euclidean_dist": euclidean_dist,
-            }
-        )
+        log_dict = {
+            "global_step": self.local_step * self.num_workers,
+            "local_step": self.local_step,
+            "lr": self.optimizers[0].param_groups[0]["lr"],
+            "loss": random.choice(self.losses[-self.num_workers :]),
+            "grad_norm": random.choice(self.grad_norms[-self.num_workers :]),
+            "cum_grad_norm_var": cum_grad_norm_var,
+            "sliding_grad_norm_var": sliding_grad_norm_var,
+            "cum_loss_var": cum_loss_var,
+            "sliding_loss_var": sliding_loss_var,
+            "p_shuffle": self.p_shuffle,
+            # "param_correlation": param_correlation,
+            # "euclidean_dist": euclidean_dist,
+        }
+
+        if self.local_step % (self.log_stats_interval * 10) == 0:
+            log_dict["param_correlation"] = parameter_correlation(self.models)
+            log_dict["euclidean_dist"] = euclidean_distance(self.models)
+
+        wandb.log()
 
     def _eval_model(self):
         self._load_master_model()

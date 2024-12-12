@@ -54,6 +54,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, nargs="+", default=None)
     parser.add_argument("--log_stats_interval", type=int, nargs="+", default=10)
     parser.add_argument("--drift_penalty", type=float, nargs="+", default=None)
+    parser.add_argument("--final_p_shuffle", type=float, nargs="+", default=None)
     parser.add_argument("--device", type=str, nargs="+", default=None)
     parser.add_argument("--shuffle_optimizer_state", type=str2bool, nargs="+", default=False)
     parser.add_argument(
@@ -128,6 +129,7 @@ if __name__ == "__main__":
             shuffle_quantization=args.shuffle_quantization,
             shuffle_optimizer_state=args.shuffle_optimizer_state,
             indexing_type=args.indexing_type,
+            final_p_shuffle=args.final_p_shuffle,
         )
 
         assert args.train ^ args.generate ^ args.profile, "Must specify exactly one of train, generate, profile"
