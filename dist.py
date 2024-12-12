@@ -261,7 +261,7 @@ class WashingMachine:
             return
 
         if self.final_p_shuffle:
-            self.p_shuffle = self.final_p_shuffle + 0.5 * (self.p_shuffle - self.final_p_shuffle) * (
+            self.p_shuffle = self.final_p_shuffle + 0.5 * (self.initial_p_shuffle - self.final_p_shuffle) * (
                 1 + math.cos(math.pi * self.local_step / self.max_local_step)
             )
 
