@@ -260,7 +260,7 @@ class WashingMachine:
         if self.num_workers == 1 or self.p_shuffle == 0:
             return
 
-        if self.final_p_shuffle:
+        if self.final_p_shuffle != None:
             self.p_shuffle = self.final_p_shuffle + 0.5 * (self.initial_p_shuffle - self.final_p_shuffle) * (
                 1 + math.cos(math.pi * self.local_step / self.max_local_step)
             )
