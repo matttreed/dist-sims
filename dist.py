@@ -265,8 +265,6 @@ class WashingMachine:
                 1 + math.cos(math.pi * self.local_step / self.max_local_step)
             )
 
-        print(self.p_shuffle)
-
         with torch.no_grad():
             model_params = [list(model.parameters()) for model in self.models]
             master_model_params = list(self.master_model.parameters())  # used only for index selector
