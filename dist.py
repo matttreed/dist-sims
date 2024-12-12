@@ -553,7 +553,7 @@ class WashingMachine:
             log_dict["param_correlation"] = parameter_correlation(self.models)
             log_dict["euclidean_dist"] = euclidean_distance(self.models)
 
-        wandb.log()
+        wandb.log(log_dict)
 
     def _eval_model(self):
         self._load_master_model()
