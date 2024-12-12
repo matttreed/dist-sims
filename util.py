@@ -326,50 +326,67 @@ def mimic_precision(tensor, precision="float16"):
 
 
 class IndexSelector:
-    def __init__(self, params, p):
-        self.state = {param: {} for param in params}
-        self.p = p
+    def __init__(self, distsim):
+        self.distsim = distsim
+        self.params = list(distsim.master_model.parameters())
 
-    def get_indices(self, param):
-        return torch.ones(param.size).bool()
+        self.state = {i: {} for i in range(len(self.params))}
+        self.p = distsim.p_shuffle
+        self.device = distsim.device
+
+    def get_indices(self, param_index):
+        return torch.ones(self.params[param_index].shape).bool()
 
 
 class RandomIndexSelector(IndexSelector):
-    def get_indices(self, param):
-        return torch.bernoulli(torch.full(param.shape, self.p, device=param.device)).bool()
+    def get_indices(self, param_index):
+        return torch.bernoulli(torch.full(self.params[param_index].shape, self.p, device=self.device)).bool()
 
 
 class PartitionedIndexSelector(IndexSelector):
-    def __init__(self, params, p):
-        super().__init__(params, p)
+    def __init__(self, distsim):
+        super().__init__(distsim)
 
         self._set_partitions()
 
     def _set_partitions(self):
-        for param, param_state in self.state.items():
+        for param_index, param_state in self.state.items():
+            param = self.params[param_index]
             param_state["curr_partition"] = 0
             param_state["num_partitions"] = min(math.ceil(1 / self.p), param.numel())
             param_state["partitions"] = (
-                torch.rand(param.numel(), device=param.device).argsort().view(param.shape)
+                torch.rand(param.numel(), device=self.device).argsort().view(param.shape)
                 % param_state["num_partitions"]
             )
 
-    def get_indices(self, param):
-        if self.state[param]["curr_partition"] >= self.state[param]["num_partitions"]:
+    def get_indices(self, param_index):
+        if self.state[param_index]["curr_partition"] >= self.state[param_index]["num_partitions"]:
             self._set_partitions()
 
-        indices = (self.state[param]["partitions"] == self.state[param]["curr_partition"]).bool()
+        indices = (self.state[param_index]["partitions"] == self.state[param_index]["curr_partition"]).bool()
 
-        self.state[param]["curr_partition"] += 1
+        self.state[param_index]["curr_partition"] += 1
 
         return indices
+
+
+class TopKGradIndexSelector(IndexSelector):
+    def get_indices(self, param_index):
+        grads = torch.stack([list(model.parameters())[param_index].grad.abs() for model in self.distsim.models]).sum(
+            dim=0
+        )
+        sort = grads.view(-1).argsort(descending=True).view(grads.shape)
+        return sort < math.ceil(self.p * grads.numel())
 
 
 # if __name__ == "__main__":
 #     a = torch.rand((1, 4))
 #     b = torch.rand((5, 4))
 
-#     selector = PartitionedIndexSelector([a, b], p=0.66)
+#     c = a * b
+#     c.backward()
+
+#     selector = TopKGradIndexSelector([a, b], p=0.66)
 
 #     for i in range(10):
 #         print(selector.get_indices(a))

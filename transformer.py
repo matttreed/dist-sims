@@ -56,7 +56,9 @@ if __name__ == "__main__":
     parser.add_argument("--drift_penalty", type=float, nargs="+", default=None)
     parser.add_argument("--device", type=str, nargs="+", default=None)
     parser.add_argument("--shuffle_optimizer_state", type=str2bool, nargs="+", default=False)
-    parser.add_argument("--indexing_type", type=str, nargs="+", default="random", choices=["random", "partitions"])
+    parser.add_argument(
+        "--indexing_type", type=str, nargs="+", default="random", choices=["random", "partitions", "topk_grads"]
+    )
     parser.add_argument("--compile", action="store_true")
     parser.add_argument("--profile", action="store_true")
     parser.add_argument("--train", action="store_true")

@@ -18,6 +18,7 @@ from util import (
     IndexSelector,
     RandomIndexSelector,
     PartitionedIndexSelector,
+    TopKGradIndexSelector,
 )
 import numpy as np
 
@@ -110,12 +111,14 @@ class WashingMachine:
         self.schedulers = []
         self._setup_master()
         self._setup_workers()
-        if self.indexing_type == "partitions":
-            self.index_selector: IndexSelector = PartitionedIndexSelector(
-                self.master_model.parameters(), p=self.p_shuffle
-            )
-        elif self.indexing_type == "random":
-            self.index_selector: IndexSelector = RandomIndexSelector(self.master_model.parameters(), p=self.p_shuffle)
+
+        index_selector_class = {
+            "random": RandomIndexSelector,
+            "partitions": PartitionedIndexSelector,
+            "topk_grads": TopKGradIndexSelector,
+        }
+
+        self.index_selector = index_selector_class[self.indexing_type](self)
 
         self.async_queue = [[] for _ in range(len(list(self.models[0].parameters())))]
         # self.parameter_correlation = parameter_correlation
@@ -132,7 +135,7 @@ class WashingMachine:
 
         assert self.shuffle_type in ["shuffle", "avg"], "Invalid shuffle type"
 
-        assert self.indexing_type in ["random", "partitions"], "Invalid indexing type"
+        assert self.indexing_type in ["random", "partitions", "topk_grads"], "Invalid indexing type"
 
         commit_hash, commit_message = get_latest_commit_and_message()
 
@@ -263,7 +266,7 @@ class WashingMachine:
                 if self.shuffle_type == "shuffle":
                     p_shuffle /= 1 - 1 / self.num_workers  # Account for poss of shuffling to self.
 
-                masked_indices = self.index_selector.get_indices(master_model_params[param_idx])
+                masked_indices = self.index_selector.get_indices(param_idx)
                 num_masked = masked_indices.sum()
 
                 if num_masked == 0:
