@@ -283,59 +283,59 @@ class WashingMachine:
                         .repeat(self.num_workers, 1)
                     )
 
-                    new_exp_avg = mimic_precision(
-                        torch.stack(
-                            [
-                                self.optimizers[model_idx].state[model_params[model_idx][param_idx]]["exp_avg"][
-                                    masked_indices
-                                ]
-                                for model_idx in range(self.num_workers)
-                            ]
-                        )
-                    )
-                    new_exp_avg_weights = torch.tensor(
-                        [
-                            self.optimizers[model_idx]
-                            .state[model_params[model_idx][param_idx]]["exp_avg"]
-                            .view(-1)
-                            .norm()
-                            .item()
-                            for model_idx in range(self.num_workers)
-                        ],
-                        device=self.device,
-                    )
-                    new_exp_avg_weights /= new_exp_avg_weights.sum()
+                    # new_exp_avg = mimic_precision(
+                    #     torch.stack(
+                    #         [
+                    #             self.optimizers[model_idx].state[model_params[model_idx][param_idx]]["exp_avg"][
+                    #                 masked_indices
+                    #             ]
+                    #             for model_idx in range(self.num_workers)
+                    #         ]
+                    #     )
+                    # )
+                    # new_exp_avg_weights = torch.tensor(
+                    #     [
+                    #         self.optimizers[model_idx]
+                    #         .state[model_params[model_idx][param_idx]]["exp_avg"]
+                    #         .view(-1)
+                    #         .norm()
+                    #         .item()
+                    #         for model_idx in range(self.num_workers)
+                    #     ],
+                    #     device=self.device,
+                    # )
+                    # new_exp_avg_weights /= new_exp_avg_weights.sum()
 
-                    new_exp_avg *= new_exp_avg_weights.unsqueeze(1)
-                    new_exp_avg = new_exp_avg.sum(dim=0)
+                    # new_exp_avg *= new_exp_avg_weights.unsqueeze(1)
+                    # new_exp_avg = new_exp_avg.sum(dim=0)
 
-                    new_exp_avg_sq = mimic_precision(
-                        torch.stack(
-                            [
-                                self.optimizers[model_idx]
-                                .state[model_params[model_idx][param_idx]]["exp_avg_sq"][masked_indices]
-                                .view(-1)
-                                .sqrt()
-                                for model_idx in range(self.num_workers)
-                            ]
-                        )
-                    )
+                    # new_exp_avg_sq = mimic_precision(
+                    #     torch.stack(
+                    #         [
+                    #             self.optimizers[model_idx]
+                    #             .state[model_params[model_idx][param_idx]]["exp_avg_sq"][masked_indices]
+                    #             .view(-1)
+                    #             .sqrt()
+                    #             for model_idx in range(self.num_workers)
+                    #         ]
+                    #     )
+                    # )
                     # be careful of taking var for parameters with 1 or 0 val?
-                    new_exp_avg_sq_weights = torch.tensor(
-                        [
-                            self.optimizers[model_idx]
-                            .state[model_params[model_idx][param_idx]]["exp_avg_sq"]
-                            .view(-1)
-                            .var()
-                            .item()
-                            for model_idx in range(self.num_workers)
-                        ],
-                        device=self.device,
-                    )
-                    new_exp_avg_sq_weights /= new_exp_avg_sq_weights.sum()
+                    # new_exp_avg_sq_weights = torch.tensor(
+                    #     [
+                    #         self.optimizers[model_idx]
+                    #         .state[model_params[model_idx][param_idx]]["exp_avg_sq"]
+                    #         .view(-1)
+                    #         .var()
+                    #         .item()
+                    #         for model_idx in range(self.num_workers)
+                    #     ],
+                    #     device=self.device,
+                    # )
+                    # new_exp_avg_sq_weights /= new_exp_avg_sq_weights.sum()
 
-                    new_exp_avg_sq *= new_exp_avg_sq_weights.unsqueeze(1)
-                    new_exp_avg_sq = new_exp_avg_sq.sum(dim=0).pow(2)
+                    # new_exp_avg_sq *= new_exp_avg_sq_weights.unsqueeze(1)
+                    # new_exp_avg_sq = new_exp_avg_sq.sum(dim=0).pow(2)
                 elif self.topology_type == "ring":
                     new_params = torch.zeros(self.num_workers, num_masked, device=self.device)
                     new_exp_avg = torch.zeros(self.num_workers, num_masked, device=self.device)
@@ -419,20 +419,20 @@ class WashingMachine:
                 #     ]
                 # )
                 new_params = mimic_precision(new_params, precision=self.shuffle_quantization)
-                new_exp_avg = mimic_precision(new_exp_avg, precision=self.shuffle_quantization)
-                new_exp_avg_sq = mimic_precision(new_exp_avg_sq, precision=self.shuffle_quantization)
-                self.async_queue[param_idx].append((new_params, new_exp_avg, new_exp_avg_sq, masked_indices))
+                # new_exp_avg = mimic_precision(new_exp_avg, precision=self.shuffle_quantization)
+                # new_exp_avg_sq = mimic_precision(new_exp_avg_sq, precision=self.shuffle_quantization)
+                self.async_queue[param_idx].append((new_params, masked_indices))
 
                 if len(self.async_queue[param_idx]) > self.async_lag:
-                    new_params, new_exp_avg, new_exp_avg_sq, masked_indices = self.async_queue[param_idx].pop(0)
+                    new_params, masked_indices = self.async_queue[param_idx].pop(0)
                     for model_idx in range(self.num_workers):
                         param = model_params[model_idx][param_idx]
                         param.masked_scatter_(masked_indices, new_params)
 
-                        if self.shuffle_optimizer_state:
-                            state = self.optimizers[model_idx].state[param]
-                            state["exp_avg"].masked_scatter_(masked_indices, new_exp_avg)
-                            state["exp_avg_sq"].masked_scatter_(masked_indices, new_exp_avg_sq)
+                        # if self.shuffle_optimizer_state:
+                        #     state = self.optimizers[model_idx].state[param]
+                        #     state["exp_avg"].masked_scatter_(masked_indices, new_exp_avg)
+                        #     state["exp_avg_sq"].masked_scatter_(masked_indices, new_exp_avg_sq)
 
                     # if model_params[model_idx][param_idx].grad is not None:
                     #     model_params[model_idx][param_idx].grad.masked_scatter_(
@@ -591,6 +591,7 @@ class WashingMachine:
                     "local_loss_std": local_loss_std,
                     "ensemble_loss": avg_ensemble_loss,
                     "ensemble_loss_std": ensemble_loss_std,
+                    "avg_ens_benefit": avg_master_loss - avg_local_loss,
                 }
             )
 
