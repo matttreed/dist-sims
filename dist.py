@@ -662,9 +662,6 @@ class WashingMachine:
             pbar.update(1)
             pbar.set_postfix({"Loss": f"{loss:.4f}"})
 
-            if self.synchronize_interval and self.local_step % self.synchronize_interval == 0:
-                self._synchronize_models()
-
             if self.wash_interval and self.local_step % self.wash_interval == 0:
                 if self.shuffle_type == "shuffle":
                     self._shuffle_params()
@@ -673,6 +670,9 @@ class WashingMachine:
 
             if self.eval_interval and self.local_step % self.eval_interval == 0:
                 self._eval_model()
+
+            if self.synchronize_interval and self.local_step % self.synchronize_interval == 0:
+                self._synchronize_models()
 
             if self.ckpt_interval and self.local_step % self.ckpt_interval == 0 and self.local_step > 0:
                 self._save_model()
