@@ -554,7 +554,8 @@ class WashingMachine:
         wandb.log(log_dict)
 
     def _eval_model(self):
-        self._load_master_model()
+        if self.synchronize_method != "diloco":
+            self._load_master_model()
         # self.master_model = deepcopy(self.models[0])
         self.master_model.eval()
         for model in self.models:
